@@ -174,11 +174,41 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-lg mx-auto p-4">
-      {/* Minimal kid-friendly header */}
-      <div className="text-center">
-        <h2 className="text-2xl font-bold text-indigo-700">📚 Let's Read!</h2>
-        <p className="text-gray-400 text-xs mt-1">Tap any word to learn it</p>
+      {/* Controls at the top */}
+      <div className="flex gap-3">
+        {!listening ? (
+          <button
+            type="button"
+            onClick={startListening}
+            className="flex-1 py-4 rounded-2xl bg-green-500 text-white font-bold text-xl
+                       active:bg-green-600 transition-colors shadow-md"
+          >
+            🎤 {sessionDone ? 'Try Again!' : 'Read Aloud'}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={stopListening}
+            className="flex-1 py-4 rounded-2xl bg-red-500 text-white font-bold text-xl
+                       active:bg-red-600 transition-colors shadow-md animate-pulse"
+          >
+            ⏹ Done
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={onReset}
+          className="py-4 px-5 rounded-2xl bg-gray-100 text-gray-500 font-bold text-xl
+                     active:bg-gray-200 transition-colors"
+          title="New photo"
+        >
+          📷
+        </button>
       </div>
+
+      {error && (
+        <p className="text-red-600 text-sm text-center bg-red-50 rounded-xl p-3">{error}</p>
+      )}
 
       {/* Reading area — looks like a paragraph in a textbook */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 px-5 py-4 min-h-40
@@ -196,6 +226,9 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
           </React.Fragment>
         ))}
       </div>
+
+      {/* Tap hint */}
+      <p className="text-gray-400 text-xs text-center">Tap any word to learn it</p>
 
       {/* Progress bar — subtle, only while reading */}
       {assessedCount > 0 && !sessionDone && (
@@ -228,42 +261,6 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
           </p>
         </div>
       )}
-
-      {error && (
-        <p className="text-red-600 text-sm text-center bg-red-50 rounded-xl p-3">{error}</p>
-      )}
-
-      {/* Big, kid-friendly controls */}
-      <div className="flex gap-3">
-        {!listening ? (
-          <button
-            type="button"
-            onClick={startListening}
-            className="flex-1 py-4 rounded-2xl bg-green-500 text-white font-bold text-xl
-                       active:bg-green-600 transition-colors shadow-md"
-          >
-            🎤 {sessionDone ? 'Try Again!' : 'Read Aloud'}
-          </button>
-        ) : (
-          <button
-            type="button"
-            onClick={stopListening}
-            className="flex-1 py-4 rounded-2xl bg-red-500 text-white font-bold text-xl
-                       active:bg-red-600 transition-colors shadow-md animate-pulse"
-          >
-            ⏹ Done
-          </button>
-        )}
-        <button
-          type="button"
-          onClick={onReset}
-          className="py-4 px-5 rounded-2xl bg-gray-100 text-gray-500 font-bold text-xl
-                     active:bg-gray-200 transition-colors"
-          title="New assignment"
-        >
-          🔄
-        </button>
-      </div>
 
       {/* Word popup (bottom sheet) */}
       {selectedWord && (
