@@ -58,15 +58,15 @@ export async function recognizeText(imageDataUrl: string): Promise<OcrResult> {
 
   const data = await submitRes.json();
 
-  // Extract text lines from the response
+  // Extract text lines from the response.
+  // The Image Analysis 4.0 API nests lines under readResult.blocks (not pages)
+  // and uses "text" (not "content") for the line string.
   const lines: string[] = [];
   const readResult = data?.readResult;
-  if (readResult?.pages) {
-    for (const page of readResult.pages) {
-      for (const line of page.lines ?? []) {
-        const lineText: string = line.content ?? '';
-        if (lineText.trim()) lines.push(lineText.trim());
-      }
+  for (const block of readResult?.blocks ?? []) {
+    for (const line of block.lines ?? []) {
+      const lineText: string = line.text ?? line.content ?? '';
+      if (lineText.trim()) lines.push(lineText.trim());
     }
   }
 
