@@ -73,6 +73,9 @@ export function startPronunciationAssessment(
   const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
   pronunciationConfig.applyTo(recognizer);
 
+  // Accumulate per-utterance fluency scores so we can average them at session end.
+  const fluencyScores: number[] = [];
+
   recognizer.recognized = (_sender, event) => {
     if (event.result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
       const jsonResult = event.result.properties.getProperty(
@@ -84,6 +87,14 @@ export function startPronunciationAssessment(
         const parsed = JSON.parse(jsonResult);
         const nbest = parsed?.NBest?.[0];
         if (!nbest) return;
+
+        // Capture utterance-level fluency score when present.
+        const utteranceFluency = Number(
+          (nbest.PronunciationAssessment as Record<string, unknown>)?.FluencyScore,
+        );
+        if (!isNaN(utteranceFluency) && utteranceFluency > 0) {
+          fluencyScores.push(utteranceFluency);
+        }
 
         const words: WordResult[] = (nbest.Words ?? []).map((w: Record<string, unknown>) => ({
           word: String(w.Word ?? ''),
@@ -102,16 +113,16 @@ export function startPronunciationAssessment(
     }
   };
 
-  recognizer.sessionStopped = (_sender, _event) => {
-    // Build a final summary from what we've collected.
-    // The detailed per-word callback already fired above; here we emit a done signal.
-    const jsonResult = _event.sessionId; // only session id is available here
-    void jsonResult;
+  recognizer.sessionStopped = () => {
+    const avgFluency =
+      fluencyScores.length > 0
+        ? fluencyScores.reduce((a, b) => a + b, 0) / fluencyScores.length
+        : 0;
     onDone({
       words: [],
       pronunciationScore: 0,
       accuracyScore: 0,
-      fluencyScore: 0,
+      fluencyScore: avgFluency,
       completenessScore: 0,
     });
     recognizer.close();

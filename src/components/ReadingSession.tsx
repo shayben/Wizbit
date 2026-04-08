@@ -1,8 +1,9 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import WordCard from './WordCard';
 import type { WordStatus } from './WordCard';
 import { startPronunciationAssessment, speakWord } from '../services/speechService';
-import type { WordResult } from '../services/speechService';
+import type { WordResult, AssessmentResult } from '../services/speechService';
+import { calculateGamificationScore } from '../services/gamificationService';
 
 interface ReadingSessionProps {
   text: string;
@@ -22,12 +23,12 @@ function normalise(word: string): string {
 const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
   const words = tokenise(text);
 
-  // Map from word index → status
   const [statuses, setStatuses] = useState<Record<number, WordStatus>>({});
   const [scores, setScores] = useState<Record<number, number>>({});
   const [listening, setListening] = useState(false);
   const [sessionDone, setSessionDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fluencyScore, setFluencyScore] = useState<number | undefined>(undefined);
 
   const stopRef = useRef<(() => void) | null>(null);
 
@@ -64,7 +65,8 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
     setScores((prev) => ({ ...prev, [idx]: result.accuracyScore }));
   }, []);
 
-  const handleDone = useCallback(() => {
+  const handleDone = useCallback((result: AssessmentResult) => {
+    setFluencyScore(result.fluencyScore > 0 ? result.fluencyScore : undefined);
     setListening(false);
     setSessionDone(true);
   }, []);
@@ -79,6 +81,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
     setSessionDone(false);
     setStatuses({});
     setScores({});
+    setFluencyScore(undefined);
     matchPointer.current = {};
 
     try {
@@ -112,11 +115,15 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
     speakWord(word);
   }, []);
 
-  // Summary counts
+  // Derived gamification score — recalculated whenever word results or fluency change.
+  const gamificationScore = useMemo(
+    () => calculateGamificationScore(words, statuses, scores, fluencyScore),
+    [words, statuses, scores, fluencyScore],
+  );
+
+  // Live progress: percentage of words assessed so far (for the progress bar while listening).
+  const assessedCount = Object.keys(statuses).length;
   const correctCount = Object.values(statuses).filter((s) => s === 'correct').length;
-  const mispronouncedCount = Object.values(statuses).filter((s) => s === 'mispronounced').length;
-  const totalScored = correctCount + mispronouncedCount;
-  const overallScore = totalScored > 0 ? Math.round((correctCount / totalScored) * 100) : null;
 
   return (
     <div className="flex flex-col gap-4 w-full max-w-lg mx-auto p-4">
@@ -140,37 +147,78 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
         ))}
       </div>
 
-      {/* Score bar */}
-      {overallScore !== null && (
-        <div className="w-full bg-gray-200 rounded-full h-3">
-          <div
-            className={`h-3 rounded-full transition-all duration-500 ${
-              overallScore >= 80 ? 'bg-green-500' : overallScore >= 50 ? 'bg-yellow-400' : 'bg-red-500'
-            }`}
-            style={{ width: `${overallScore}%` }}
-          />
+      {/* Live progress bar (visible while words are being assessed) */}
+      {assessedCount > 0 && !sessionDone && (
+        <div className="w-full">
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div
+              className="h-2 rounded-full bg-indigo-400 transition-all duration-300"
+              style={{ width: `${Math.round((assessedCount / words.length) * 100)}%` }}
+            />
+          </div>
+          <p className="text-xs text-gray-400 text-right mt-0.5">
+            {assessedCount} / {words.length} words
+          </p>
         </div>
       )}
 
-      {overallScore !== null && (
-        <p className="text-center text-sm text-gray-600">
-          Score: <strong className="text-indigo-700">{overallScore}%</strong>
-          {' '}({correctCount} correct, {mispronouncedCount} to practice)
+      {/* Gamification score card — shown after session ends */}
+      {sessionDone && gamificationScore && !error && (
+        <div className="rounded-2xl bg-gradient-to-br from-indigo-50 to-purple-50 border border-indigo-100 p-4 shadow-sm">
+          {/* Score number + stars */}
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-center">
+              <span className="text-5xl font-extrabold text-indigo-700 leading-none">
+                {gamificationScore.score}
+              </span>
+              <span className="text-lg text-indigo-400 ml-1">/ 100</span>
+            </div>
+            <div className="text-right">
+              <p className="text-2xl leading-none mb-1">
+                {'⭐'.repeat(gamificationScore.stars)}{'☆'.repeat(5 - gamificationScore.stars)}
+              </p>
+              <p className="text-sm font-semibold text-indigo-600">{gamificationScore.label}</p>
+            </div>
+          </div>
+
+          {/* Score bar */}
+          <div className="w-full bg-indigo-100 rounded-full h-3 mb-3">
+            <div
+              className={`h-3 rounded-full transition-all duration-700 ${
+                gamificationScore.score >= 75
+                  ? 'bg-green-500'
+                  : gamificationScore.score >= 50
+                    ? 'bg-indigo-500'
+                    : 'bg-yellow-400'
+              }`}
+              style={{ width: `${gamificationScore.score}%` }}
+            />
+          </div>
+
+          {/* Encouraging message */}
+          <p className="text-indigo-700 font-medium text-sm text-center">
+            {gamificationScore.message}
+          </p>
+
+          {/* Word stats */}
+          <p className="text-gray-500 text-xs text-center mt-2">
+            {correctCount} word{correctCount !== 1 ? 's' : ''} correct out of {assessedCount} assessed
+            {gamificationScore.hardWordCount > 0 && (
+              <> · {gamificationScore.hardWordCount} difficult word{gamificationScore.hardWordCount !== 1 ? 's' : ''} attempted</>
+            )}
+          </p>
+        </div>
+      )}
+
+      {/* Partial live score (while listening, show simple percentage) */}
+      {!sessionDone && gamificationScore && (
+        <p className="text-center text-sm text-gray-500">
+          Score so far: <strong className="text-indigo-700">{gamificationScore.score}</strong> / 100
         </p>
       )}
 
       {error && (
         <p className="text-red-600 text-sm text-center bg-red-50 rounded-xl p-3">{error}</p>
-      )}
-
-      {sessionDone && !error && (
-        <div className="text-center bg-indigo-50 rounded-xl p-3">
-          <p className="text-indigo-700 font-semibold">
-            {overallScore !== null && overallScore >= 80
-              ? '🎉 Great job! Keep it up!'
-              : '👍 Session complete. Keep practising!'}
-          </p>
-        </div>
       )}
 
       {/* Controls */}
