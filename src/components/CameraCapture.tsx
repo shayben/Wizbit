@@ -13,20 +13,38 @@ const CameraCapture: React.FC<CameraCaptureProps> = ({ onCapture }) => {
 
   const startCamera = useCallback(async () => {
     setError(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-        audio: false,
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-        setStreaming(true);
+
+    // Try progressively simpler constraints so more devices succeed.
+    const constraintOptions: MediaStreamConstraints[] = [
+      { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+      { video: { facingMode: { ideal: 'environment' } }, audio: false },
+      { video: true, audio: false },
+    ];
+
+    let stream: MediaStream | null = null;
+    for (const constraints of constraintOptions) {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        break;
+      } catch {
+        // try next set of constraints
       }
-    } catch (err) {
+    }
+
+    if (!stream) {
       setError('Unable to access camera. Please allow camera permissions and try again.');
-      console.error(err);
+      return;
+    }
+
+    streamRef.current = stream;
+    if (videoRef.current) {
+      videoRef.current.srcObject = stream;
+      try {
+        await videoRef.current.play();
+      } catch {
+        // play() can reject if the element is removed before playback starts — safe to ignore.
+      }
+      setStreaming(true);
     }
   }, []);
 
