@@ -7,23 +7,39 @@
 const VISION_ENDPOINT = import.meta.env.VITE_AZURE_VISION_ENDPOINT as string;
 const VISION_KEY = import.meta.env.VITE_AZURE_VISION_KEY as string;
 
+/** Max dimension (px) for the longest side before sending to Azure. */
+const MAX_IMAGE_DIMENSION = 2048;
+/** Target JPEG quality for recompression. */
+const JPEG_QUALITY = 0.85;
+
 export interface OcrResult {
   text: string;
   lines: string[];
 }
 
 /**
- * Convert a base64 data-URL to a Blob so it can be POSTed as binary.
+ * Resize and re-encode an image data-URL so that:
+ *  - The longest side is at most MAX_IMAGE_DIMENSION px.
+ *  - The blob stays well under the Azure 4 MB limit.
+ *  - EXIF orientation is baked in (browsers apply it when drawing to canvas).
  */
-function dataUrlToBlob(dataUrl: string): Blob {
-  const [header, base64] = dataUrl.split(',');
-  const mimeType = header.match(/:(.*?);/)?.[1] ?? 'image/jpeg';
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+async function prepareImage(dataUrl: string): Promise<Blob> {
+  const img = await createImageBitmap(await (await fetch(dataUrl)).blob());
+
+  let { width, height } = img;
+  const longest = Math.max(width, height);
+  if (longest > MAX_IMAGE_DIMENSION) {
+    const scale = MAX_IMAGE_DIMENSION / longest;
+    width = Math.round(width * scale);
+    height = Math.round(height * scale);
   }
-  return new Blob([bytes], { type: mimeType });
+
+  const canvas = new OffscreenCanvas(width, height);
+  const ctx = canvas.getContext('2d')!;
+  ctx.drawImage(img, 0, 0, width, height);
+  img.close();
+
+  return canvas.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY });
 }
 
 /**
@@ -38,15 +54,14 @@ export async function recognizeText(imageDataUrl: string): Promise<OcrResult> {
     );
   }
 
-  const blob = dataUrlToBlob(imageDataUrl);
+  const blob = await prepareImage(imageDataUrl);
 
-  // Step 1 – submit image to the Read API
   const submitUrl = `${VISION_ENDPOINT.replace(/\/$/, '')}/computervision/imageanalysis:analyze?api-version=2024-02-01&features=read`;
   const submitRes = await fetch(submitUrl, {
     method: 'POST',
     headers: {
       'Ocp-Apim-Subscription-Key': VISION_KEY,
-      'Content-Type': blob.type,
+      'Content-Type': 'image/jpeg',
     },
     body: blob,
   });
@@ -58,9 +73,8 @@ export async function recognizeText(imageDataUrl: string): Promise<OcrResult> {
 
   const data = await submitRes.json();
 
-  // Extract text lines from the response.
-  // The Image Analysis 4.0 API nests lines under readResult.blocks (not pages)
-  // and uses "text" (not "content") for the line string.
+  // The Image Analysis 4.0 API nests lines under readResult.blocks
+  // and uses "text" for the line string.
   const lines: string[] = [];
   const readResult = data?.readResult;
   for (const block of readResult?.blocks ?? []) {
