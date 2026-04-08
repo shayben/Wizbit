@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { splitSyllables } from '../services/syllableService';
 import { translateToHebrew } from '../services/translationService';
 import { speakWord } from '../services/speechService';
@@ -11,6 +11,50 @@ interface WordPopupProps {
   onClose: () => void;
 }
 
+/**
+ * Distribute phoneme scores across syllables proportionally by character count.
+ * Returns an average accuracy score (0–100) per syllable.
+ */
+function syllableScores(syllables: string[], phonemeScores: number[]): number[] {
+  if (phonemeScores.length === 0) return [];
+
+  const totalChars = syllables.reduce((s, syl) => s + syl.length, 0);
+  const scores: number[] = [];
+  let phonemeIdx = 0;
+
+  for (const syl of syllables) {
+    // How many phonemes this syllable "owns", proportional to its character share
+    const share = (syl.length / totalChars) * phonemeScores.length;
+    const count = Math.max(1, Math.round(share));
+    const slice = phonemeScores.slice(phonemeIdx, phonemeIdx + count);
+    phonemeIdx += count;
+    const avg = slice.length > 0 ? slice.reduce((a, b) => a + b, 0) / slice.length : 0;
+    scores.push(Math.round(avg));
+  }
+
+  // If rounding left over phonemes, fold them into the last syllable
+  if (phonemeIdx < phonemeScores.length) {
+    const remaining = phonemeScores.slice(phonemeIdx);
+    const last = scores[scores.length - 1];
+    const combined = [...remaining, last];
+    scores[scores.length - 1] = Math.round(combined.reduce((a, b) => a + b, 0) / combined.length);
+  }
+
+  return scores;
+}
+
+function scoreColor(score: number): string {
+  if (score >= 80) return 'text-green-600 bg-green-50';
+  if (score >= 50) return 'text-amber-600 bg-amber-50';
+  return 'text-red-600 bg-red-50';
+}
+
+function scoreEmoji(score: number): string {
+  if (score >= 80) return '✅';
+  if (score >= 50) return '🔶';
+  return '❌';
+}
+
 const WordPopup: React.FC<WordPopupProps> = ({ word, recordingBlob, timing, onClose }) => {
   const cleanWord = word.replace(/[^a-zA-Z']/g, '');
   const syllables = splitSyllables(cleanWord);
@@ -19,6 +63,13 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, recordingBlob, timing, onCl
   const [playingBack, setPlayingBack] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<number | null>(null);
+
+  const phonemeScores = timing?.phonemeScores ?? [];
+  const sylScores = useMemo(
+    () => syllableScores(syllables, phonemeScores),
+    [syllables, phonemeScores],
+  );
+  const hasAssessment = sylScores.length > 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -35,7 +86,6 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, recordingBlob, timing, onCl
     return () => { cancelled = true; };
   }, [cleanWord]);
 
-  // Clean up audio on unmount
   useEffect(() => {
     return () => {
       if (audioRef.current) {
@@ -51,7 +101,6 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, recordingBlob, timing, onCl
   const handlePlayRecording = useCallback(() => {
     if (!recordingBlob || !timing) return;
 
-    // Clean up previous playback
     if (audioRef.current) {
       audioRef.current.pause();
       URL.revokeObjectURL(audioRef.current.src);
@@ -62,7 +111,6 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, recordingBlob, timing, onCl
     audioRef.current = audio;
     setPlayingBack(true);
 
-    // Add a small buffer around the word for natural-sounding playback
     const buffer = 0.15;
     const startTime = Math.max(0, timing.offsetSec - buffer);
     const playDuration = timing.durationSec + buffer * 2;
@@ -88,34 +136,51 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, recordingBlob, timing, onCl
 
   return (
     <>
-      {/* Backdrop */}
       <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
 
-      {/* Bottom sheet */}
       <div className="fixed bottom-0 left-0 right-0 z-50 animate-slide-up">
         <div className="max-w-lg mx-auto bg-white rounded-t-3xl shadow-2xl p-5 pb-8">
-          {/* Drag handle */}
           <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4" />
 
           {/* Word */}
-          <div className="text-center mb-4">
+          <div className="text-center mb-3">
             <span className="text-3xl font-bold text-indigo-700">{cleanWord}</span>
           </div>
 
-          {/* Syllable breakdown */}
-          <div className="flex items-center justify-center gap-1 mb-4 flex-wrap">
-            {syllables.map((syl, i) => (
-              <React.Fragment key={i}>
-                {i > 0 && <span className="text-gray-300 text-xl mx-0.5">·</span>}
-                <span className="text-2xl font-semibold px-2 py-1 text-gray-700">
-                  {syl}
-                </span>
-              </React.Fragment>
-            ))}
+          {/* Syllable accuracy breakdown */}
+          <div className="mb-4">
+            <div className="flex items-center justify-center gap-1 flex-wrap">
+              {syllables.map((syl, i) => (
+                <React.Fragment key={i}>
+                  {i > 0 && <span className="text-gray-300 text-xl mx-0.5">·</span>}
+                  <span
+                    className={`text-2xl font-semibold px-2.5 py-1 rounded-lg transition-colors ${
+                      hasAssessment ? scoreColor(sylScores[i]) : 'text-gray-700'
+                    }`}
+                  >
+                    {syl}
+                  </span>
+                </React.Fragment>
+              ))}
+            </div>
+
+            {/* Per-syllable score indicators */}
+            {hasAssessment && (
+              <div className="flex items-center justify-center gap-1 mt-2 flex-wrap">
+                {syllables.map((_syl, i) => (
+                  <React.Fragment key={i}>
+                    {i > 0 && <span className="w-5" />}
+                    <span className="text-xs font-medium text-gray-500 text-center min-w-8">
+                      {scoreEmoji(sylScores[i])} {sylScores[i]}
+                    </span>
+                  </React.Fragment>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Hebrew translation */}
-          <div className="text-center mb-5 min-h-8">
+          <div className="text-center mb-4 min-h-8">
             {translating ? (
               <span className="text-gray-400 text-sm">Translating…</span>
             ) : hebrew ? (

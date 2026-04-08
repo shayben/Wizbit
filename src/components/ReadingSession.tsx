@@ -9,6 +9,7 @@ import { calculateGamificationScore } from '../services/gamificationService';
 export interface WordTiming {
   offsetSec: number;
   durationSec: number;
+  phonemeScores: number[];
 }
 
 interface ReadingSessionProps {
@@ -75,7 +76,11 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
     setScores((prev) => ({ ...prev, [idx]: result.accuracyScore }));
     setWordTimings((prev) => ({
       ...prev,
-      [idx]: { offsetSec: result.offsetSec, durationSec: result.durationSec },
+      [idx]: {
+        offsetSec: result.offsetSec,
+        durationSec: result.durationSec,
+        phonemeScores: result.phonemeScores,
+      },
     }));
   }, []);
 

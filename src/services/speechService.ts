@@ -22,6 +22,8 @@ export interface WordResult {
   offsetSec: number;
   /** Duration of the word in seconds (from Azure Duration, converted from 100ns ticks). */
   durationSec: number;
+  /** Per-phoneme accuracy scores (0–100) in order. Empty if phoneme data unavailable. */
+  phonemeScores: number[];
 }
 
 export interface AssessmentResult {
@@ -69,7 +71,7 @@ export function startPronunciationAssessment(
   const pronunciationConfig = new SpeechSDK.PronunciationAssessmentConfig(
     referenceText,
     SpeechSDK.PronunciationAssessmentGradingSystem.HundredMark,
-    SpeechSDK.PronunciationAssessmentGranularity.Word,
+    SpeechSDK.PronunciationAssessmentGranularity.Phoneme,
     true,
   );
   pronunciationConfig.enableProsodyAssessment = false;
@@ -100,17 +102,24 @@ export function startPronunciationAssessment(
           fluencyScores.push(utteranceFluency);
         }
 
-        const words: WordResult[] = (nbest.Words ?? []).map((w: Record<string, unknown>) => ({
-          word: String(w.Word ?? ''),
-          accuracyScore: Number(
-            (w.PronunciationAssessment as Record<string, unknown>)?.AccuracyScore ?? 0,
-          ),
-          errorType: String(
-            (w.PronunciationAssessment as Record<string, unknown>)?.ErrorType ?? 'None',
-          ),
-          offsetSec: Number(w.Offset ?? 0) / 1e7,
-          durationSec: Number(w.Duration ?? 0) / 1e7,
-        }));
+        const words: WordResult[] = (nbest.Words ?? []).map((w: Record<string, unknown>) => {
+          const phonemes = (w.Phonemes as Record<string, unknown>[] | undefined) ?? [];
+          const phonemeScores = phonemes.map((p) =>
+            Number((p.PronunciationAssessment as Record<string, unknown>)?.AccuracyScore ?? 0),
+          );
+          return {
+            word: String(w.Word ?? ''),
+            accuracyScore: Number(
+              (w.PronunciationAssessment as Record<string, unknown>)?.AccuracyScore ?? 0,
+            ),
+            errorType: String(
+              (w.PronunciationAssessment as Record<string, unknown>)?.ErrorType ?? 'None',
+            ),
+            offsetSec: Number(w.Offset ?? 0) / 1e7,
+            durationSec: Number(w.Duration ?? 0) / 1e7,
+            phonemeScores,
+          };
+        });
 
         words.forEach(onWord);
       } catch {
