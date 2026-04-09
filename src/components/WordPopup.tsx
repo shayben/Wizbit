@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { splitSyllables } from '../services/syllableService';
-import { translateWordInContext, translateWord } from '../services/translationService';
 import { speakWord, assessWord } from '../services/speechService';
 import type { WordResult } from '../services/speechService';
 import type { WordTiming } from './ReadingSession';
+import type { PreloadedMoment } from '../services/mediaService';
+import type { WordTranslationMap } from '../services/translationService';
 
 interface WordPopupProps {
   word: string;
@@ -13,8 +14,12 @@ interface WordPopupProps {
   targetLang?: string;
   /** Text direction of the target language. */
   textDir?: 'ltr' | 'rtl';
+  /** Pre-computed word→translation map from batch translate. */
+  translationMap?: WordTranslationMap;
   recordingBlob: Blob | null;
   timing?: WordTiming;
+  /** Immersive moment data for this word, if any. */
+  moment?: PreloadedMoment;
   /** Called when the user successfully practises the word. */
   onPracticeResult?: (result: WordResult) => void;
   onClose: () => void;
@@ -64,11 +69,9 @@ function scoreEmoji(score: number): string {
   return '❌';
 }
 
-const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, targetLang = 'he', textDir = 'rtl', recordingBlob, timing, onPracticeResult, onClose }) => {
+const WordPopup: React.FC<WordPopupProps> = ({ word, textDir = 'rtl', translationMap, recordingBlob, timing, moment, onPracticeResult, onClose }) => {
   const cleanWord = word.replace(/[^a-zA-Z']/g, '');
   const syllables = splitSyllables(cleanWord);
-  const [translated, setTranslated] = useState<string | null>(null);
-  const [translating, setTranslating] = useState(true);
   const [playingBack, setPlayingBack] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -87,27 +90,9 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, targetLang = 'he'
   );
   const hasAssessment = sylScores.length > 0;
 
-  useEffect(() => {
-    let cancelled = false;
-    setTranslated(null);
-    setTranslating(true);
-
-    const promise = sentence
-      ? translateWordInContext(word, sentence, targetLang)
-      : translateWord(cleanWord, targetLang);
-
-    promise
-      .then((r) => {
-        if (!cancelled) setTranslated(r.translation);
-      })
-      .catch(() => {
-        if (!cancelled) setTranslated(null);
-      })
-      .finally(() => {
-        if (!cancelled) setTranslating(false);
-      });
-    return () => { cancelled = true; };
-  }, [cleanWord, word, sentence, targetLang]);
+  // Instant lookup from pre-computed map
+  const translated = translationMap?.get(cleanWord.toLowerCase()) ?? null;
+  const translating = translationMap !== undefined && translationMap.size === 0;
 
   useEffect(() => {
     return () => {
@@ -181,7 +166,23 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, targetLang = 'he'
   }, [cleanWord]);
 
   return (
-    <div className="rounded-2xl bg-indigo-50 border border-indigo-100 p-4 md:p-6 shadow-sm">
+    <>
+      {/* Backdrop — tap to close */}
+      <div
+        className="fixed inset-0 bg-black/20 z-40 animate-fade-in"
+        onClick={onClose}
+      />
+      {/* Bottom sheet */}
+      <div
+        className="fixed bottom-0 inset-x-0 z-50 bg-indigo-50 rounded-t-3xl border-t border-indigo-100
+                   p-4 md:p-6 pb-6 md:pb-8 shadow-lg max-h-[70vh] overflow-y-auto
+                   animate-slide-up overscroll-contain"
+        style={{ touchAction: 'pan-y', overscrollBehavior: 'contain' }}
+      >
+        {/* Drag handle */}
+        <div className="flex justify-center mb-3">
+          <div className="w-10 h-1 rounded-full bg-gray-300" />
+        </div>
       {/* Header: word + close */}
       <div className="flex items-center justify-between mb-3">
         <span className="text-2xl md:text-3xl font-bold text-indigo-700">{cleanWord}</span>
@@ -233,6 +234,40 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, targetLang = 'he'
           <span className="text-xl md:text-2xl font-medium text-gray-600" dir={textDir}>{translated}</span>
         ) : null}
       </div>
+
+      {/* Immersive moment media */}
+      {moment && (
+        <div className="mb-3 md:mb-4 rounded-xl bg-purple-50 border border-purple-100 p-3 md:p-4">
+          <div className="flex items-start gap-3">
+            {moment.imageUrl && (
+              <img
+                src={moment.imageUrl}
+                alt={moment.caption}
+                className="w-20 h-20 md:w-24 md:h-24 rounded-xl object-cover shrink-0 shadow-sm"
+              />
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm md:text-base text-purple-700 font-medium leading-snug">
+                💡 {moment.caption}
+              </p>
+              {moment.audioUrl && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const a = new Audio(moment.audioUrl);
+                    a.volume = 0.3;
+                    a.play().catch(() => {});
+                  }}
+                  className="mt-2 text-xs md:text-sm font-bold text-purple-600 bg-purple-100 rounded-lg
+                             px-3 py-1.5 active:bg-purple-200 transition-colors"
+                >
+                  🎵 Play sound
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Action buttons */}
       <div className="flex gap-2 md:gap-3 flex-wrap">
@@ -290,7 +325,8 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, targetLang = 'he'
           {practiceError}
         </div>
       )}
-    </div>
+      </div>
+    </>
   );
 };
 

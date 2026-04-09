@@ -15,6 +15,7 @@ export default function App() {
   const { user, loading: authLoading, isConfigured, signOut } = useAuth();
   const [step, setStep] = useState<AppStep>('home');
   const [assignmentText, setAssignmentText] = useState('');
+  const [momentCacheKey, setMomentCacheKey] = useState<string | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
   const [demoLevel, setDemoLevel] = useState<ReadingLevel | null>(null);
 
@@ -91,6 +92,7 @@ export default function App() {
   const handleReset = useCallback(() => {
     stopCamera();
     setAssignmentText('');
+    setMomentCacheKey(undefined);
     setError(null);
     setDemoLevel(null);
     setStep('home');
@@ -101,10 +103,11 @@ export default function App() {
     setStep('demo-pick');
   }, []);
 
-  const handleDemoParagraph = useCallback((p: DemoParagraph) => {
+  const handleDemoParagraph = useCallback((p: DemoParagraph, index: number) => {
     setAssignmentText(p.text);
+    setMomentCacheKey(demoLevel ? `${demoLevel.grade}-${index}` : undefined);
     setStep('reading');
-  }, []);
+  }, [demoLevel]);
 
   // Clean up camera on unmount
   useEffect(() => {
@@ -153,11 +156,24 @@ export default function App() {
         <button
           type="button"
           onClick={openCamera}
-          className="w-28 h-28 md:w-36 md:h-36 rounded-full bg-indigo-600 text-white text-5xl md:text-6xl
-                     flex items-center justify-center shadow-xl
-                     active:bg-indigo-700 active:scale-95 transition-all"
+          className="group w-28 h-28 md:w-36 md:h-36 rounded-full
+                     bg-gradient-to-b from-indigo-400 via-indigo-600 to-indigo-700
+                     flex items-center justify-center
+                     shadow-[0_6px_20px_rgba(79,70,229,0.45),inset_0_2px_4px_rgba(255,255,255,0.25),inset_0_-2px_4px_rgba(0,0,0,0.2)]
+                     active:shadow-[0_2px_8px_rgba(79,70,229,0.3),inset_0_-1px_2px_rgba(255,255,255,0.15),inset_0_2px_6px_rgba(0,0,0,0.25)]
+                     active:translate-y-0.5 active:scale-[0.97]
+                     transition-all duration-100 ease-out
+                     border border-indigo-500/30"
         >
-          📷
+          <span className="text-5xl md:text-6xl flex items-center justify-center
+                           drop-shadow-[0_2px_2px_rgba(0,0,0,0.2)]
+                           group-active:scale-90 transition-transform duration-100
+                           -mt-0.5">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-12 h-12 md:w-14 md:h-14">
+              <path d="M12 9a3.75 3.75 0 100 7.5A3.75 3.75 0 0012 9z" />
+              <path fillRule="evenodd" d="M9.344 3.071a49.52 49.52 0 015.312 0c.967.052 1.83.585 2.332 1.39l.821 1.317c.24.383.645.643 1.11.71.386.054.77.113 1.152.177 1.432.239 2.429 1.493 2.429 2.909V18a3 3 0 01-3 3H4.5a3 3 0 01-3-3V9.574c0-1.416.997-2.67 2.429-2.909.382-.064.766-.123 1.151-.178a1.56 1.56 0 001.11-.71l.822-1.315a2.942 2.942 0 012.332-1.39zM12 10.5a2.25 2.25 0 100 4.5 2.25 2.25 0 000-4.5z" clipRule="evenodd" />
+            </svg>
+          </span>
         </button>
         <p className="text-gray-400 text-sm md:text-base">Tap to scan your reading</p>
 
@@ -224,7 +240,7 @@ export default function App() {
               <button
                 key={i}
                 type="button"
-                onClick={() => handleDemoParagraph(p)}
+                onClick={() => handleDemoParagraph(p, i)}
                 className="text-left bg-white rounded-2xl border border-gray-100 shadow-sm p-4 md:p-5
                            active:bg-indigo-50 active:border-indigo-200 transition-colors"
               >
@@ -301,7 +317,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white">
       <main className="pb-8 pt-2 md:pt-6">
-        <ReadingSession text={assignmentText} onReset={handleReset} />
+        <ReadingSession text={assignmentText} momentCacheKey={momentCacheKey} onReset={handleReset} />
       </main>
     </div>
   );

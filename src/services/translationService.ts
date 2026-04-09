@@ -1,5 +1,6 @@
 /**
- * Azure Translator service — translates words to a configurable target language.
+ * Translation service — batch-translates all words in a text via Azure OpenAI,
+ * returning a word→translation map. Individual word lookups are instant after that.
  */
 
 const TRANSLATOR_KEY = import.meta.env.VITE_AZURE_TRANSLATOR_KEY as string;
@@ -7,6 +8,10 @@ const TRANSLATOR_REGION = import.meta.env.VITE_AZURE_TRANSLATOR_REGION as string
 
 const TRANSLATE_BASE =
   'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0';
+
+const OPENAI_ENDPOINT = import.meta.env.VITE_AZURE_OPENAI_ENDPOINT as string;
+const OPENAI_KEY = import.meta.env.VITE_AZURE_OPENAI_KEY as string;
+const OPENAI_DEPLOYMENT = import.meta.env.VITE_AZURE_OPENAI_DEPLOYMENT as string;
 
 export interface SupportedLanguage {
   code: string;
@@ -155,4 +160,84 @@ export async function translateWordInContext(
   } catch {
     return translateWord(clean, langCode);
   }
+}
+
+// ── Batch translation via Azure OpenAI ──
+
+export type WordTranslationMap = Map<string, string>;
+
+const MAX_RETRIES = 3;
+
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const res = await fetch(url, init);
+    if (res.status !== 429 || attempt === MAX_RETRIES) return res;
+    const retryAfter = Number(res.headers.get('Retry-After') || 0);
+    const delay = Math.max(retryAfter * 1000, 2000 * 2 ** attempt);
+    await new Promise((r) => setTimeout(r, delay));
+  }
+  return fetch(url, init);
+}
+
+/**
+ * Translate all unique words in a text at once using Azure OpenAI.
+ * Returns a Map from lowercase English word → translated word.
+ *
+ * One API call replaces N per-word calls. Falls back to empty map on failure.
+ */
+export async function batchTranslateText(
+  fullText: string,
+  langCode: string,
+  langLabel: string,
+): Promise<WordTranslationMap> {
+  const map: WordTranslationMap = new Map();
+
+  if (!OPENAI_ENDPOINT || !OPENAI_KEY || !OPENAI_DEPLOYMENT) return map;
+
+  const words = fullText.match(/[a-zA-Z']+/g) ?? [];
+  const unique = [...new Set(words.map((w) => w.toLowerCase()))];
+  if (unique.length === 0) return map;
+
+  const url = `${OPENAI_ENDPOINT}/openai/deployments/${OPENAI_DEPLOYMENT}/chat/completions?api-version=2024-02-01`;
+
+  try {
+    const res = await fetchWithRetry(url, {
+      method: 'POST',
+      headers: {
+        'api-key': OPENAI_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        messages: [
+          {
+            role: 'system',
+            content: `You are a translator for a children's reading app. Translate each English word to ${langLabel} (${langCode}), using the surrounding text for context so polysemous words get the right meaning.\n\nReturn ONLY a valid JSON object mapping each English word (lowercase) to its translation. No markdown fences, no explanation.\n\nExample: {"cat": "חתול", "sat": "ישב"}`,
+          },
+          {
+            role: 'user',
+            content: `Full text for context:\n"${fullText}"\n\nTranslate these words: ${JSON.stringify(unique)}`,
+          },
+        ],
+        temperature: 0.1,
+        max_tokens: Math.min(unique.length * 20, 2000),
+      }),
+    });
+
+    if (!res.ok) return map;
+
+    const data = await res.json();
+    const content: string = data?.choices?.[0]?.message?.content ?? '';
+    const jsonStr = content.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
+    const parsed = JSON.parse(jsonStr) as Record<string, string>;
+
+    for (const [key, val] of Object.entries(parsed)) {
+      if (typeof val === 'string' && val.trim()) {
+        map.set(key.toLowerCase(), val.trim());
+      }
+    }
+  } catch {
+    // Best-effort — return whatever we got
+  }
+
+  return map;
 }

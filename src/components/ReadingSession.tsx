@@ -9,8 +9,9 @@ import { calculateGamificationScore } from '../services/gamificationService';
 import { analyzeTextForMoments } from '../services/momentsService';
 import { preloadMoments } from '../services/mediaService';
 import type { PreloadedMoment } from '../services/mediaService';
-import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '../services/translationService';
-import type { SupportedLanguage } from '../services/translationService';
+import { momentCache } from '../data/momentCache';
+import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE, batchTranslateText } from '../services/translationService';
+import type { SupportedLanguage, WordTranslationMap } from '../services/translationService';
 import { useAuth } from '../contexts/AuthContext';
 import {
   saveSession,
@@ -30,6 +31,7 @@ export interface WordTiming {
 
 interface ReadingSessionProps {
   text: string;
+  momentCacheKey?: string;
   onReset: () => void;
 }
 
@@ -39,7 +41,7 @@ function tokenise(text: string): string[] {
   return text.match(/\S+/g) ?? [];
 }
 
-const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
+const ReadingSession: React.FC<ReadingSessionProps> = ({ text, momentCacheKey, onReset }) => {
   const { user } = useAuth();
   const words = useMemo(() => tokenise(text), [text]);
 
@@ -63,6 +65,17 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
   // Translation language
   const [targetLang, setTargetLang] = useState<SupportedLanguage>(DEFAULT_LANGUAGE);
   const [langPickerOpen, setLangPickerOpen] = useState(false);
+  const [translationMap, setTranslationMap] = useState<WordTranslationMap>(new Map());
+
+  // Batch-translate all words when text or language changes
+  useEffect(() => {
+    let cancelled = false;
+    setTranslationMap(new Map());
+    batchTranslateText(text, targetLang.code, targetLang.label)
+      .then((map) => { if (!cancelled) setTranslationMap(map); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [text, targetLang]);
 
   // Newly awarded trophies (shown inline after session ends)
   const [newTrophies, setNewTrophies] = useState<Trophy[]>([]);
@@ -70,13 +83,18 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
     if (!immersive) return;
     let cancelled = false;
     setMomentsLoading(true);
-    analyzeTextForMoments(words)
+
+    const momentsPromise = momentCacheKey && momentCache[momentCacheKey]
+      ? Promise.resolve(momentCache[momentCacheKey])
+      : analyzeTextForMoments(words);
+
+    momentsPromise
       .then((raw) => (!cancelled ? preloadMoments(raw) : []))
       .then((loaded) => { if (!cancelled) setMoments(loaded); })
       .catch(() => {})
       .finally(() => { if (!cancelled) setMomentsLoading(false); });
     return () => { cancelled = true; };
-  }, [words, immersive]);
+  }, [words, immersive, momentCacheKey]);
 
   // Audio recording state
   const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
@@ -290,6 +308,9 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
 
   const selectedWord = selectedWordIndex !== null ? words[selectedWordIndex] : null;
   const selectedTiming = selectedWordIndex !== null ? wordTimings[selectedWordIndex] : undefined;
+  const selectedMoment = selectedWordIndex !== null
+    ? moments.find((m) => m.wordIndex === selectedWordIndex)
+    : undefined;
 
   return (
     <div className="flex flex-col gap-4 md:gap-6 w-full max-w-lg md:max-w-2xl mx-auto p-4 md:p-8">
@@ -338,19 +359,19 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
           </button>
           {langPickerOpen && (
             <div className="absolute top-full mt-1 right-0 z-40 bg-white rounded-2xl shadow-lg border border-gray-100
-                            p-2 grid grid-cols-5 gap-1 min-w-[200px]">
+                            p-2 w-48 md:w-52 max-h-72 overflow-y-auto">
               {SUPPORTED_LANGUAGES.map((lang) => (
                 <button
                   key={lang.code}
                   type="button"
                   onClick={() => { setTargetLang(lang); setLangPickerOpen(false); }}
-                  className={`flex flex-col items-center gap-0.5 py-2 px-1 rounded-xl text-center transition-colors
+                  className={`flex items-center gap-2.5 w-full py-2 px-3 rounded-xl text-left transition-colors
                     ${lang.code === targetLang.code
-                      ? 'bg-indigo-100 border border-indigo-300'
-                      : 'hover:bg-gray-50 active:bg-gray-100'}`}
+                      ? 'bg-indigo-100'
+                      : 'active:bg-gray-100'}`}
                 >
-                  <span className="text-lg">{lang.flag}</span>
-                  <span className="text-[10px] md:text-xs text-gray-500 leading-tight">{lang.label}</span>
+                  <span className="text-lg shrink-0">{lang.flag}</span>
+                  <span className="text-sm md:text-base text-gray-700 font-medium">{lang.label}</span>
                 </button>
               ))}
             </div>
@@ -371,8 +392,10 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
         <p className="text-red-600 text-sm md:text-base text-center bg-red-50 rounded-xl p-3">{error}</p>
       )}
 
-      {immersive && momentsLoading && (
-        <p className="text-purple-400 text-xs md:text-sm text-center">✨ Preparing immersive experience…</p>
+      {immersive && (
+        <p className={`text-xs md:text-sm text-center h-5 ${momentsLoading ? 'text-purple-400' : 'text-transparent'}`}>
+          ✨ Preparing immersive experience…
+        </p>
       )}
 
       {/* Immersive moment overlay (fixed-position, non-obstructive) */}
@@ -461,8 +484,10 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
           sentence={text}
           targetLang={targetLang.code}
           textDir={targetLang.dir}
+          translationMap={translationMap}
           recordingBlob={recordingBlob}
           timing={selectedTiming}
+          moment={selectedMoment}
           onPracticeResult={handlePracticeResult}
           onClose={() => setSelectedWordIndex(null)}
         />
