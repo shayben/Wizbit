@@ -1,10 +1,10 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { splitSyllables } from '../services/syllableService';
-import { translateWordInContext, translateWord } from '../services/translationService';
 import { speakWord, assessWord } from '../services/speechService';
 import type { WordResult } from '../services/speechService';
 import type { WordTiming } from './ReadingSession';
 import type { PreloadedMoment } from '../services/mediaService';
+import type { WordTranslationMap } from '../services/translationService';
 
 interface WordPopupProps {
   word: string;
@@ -14,6 +14,8 @@ interface WordPopupProps {
   targetLang?: string;
   /** Text direction of the target language. */
   textDir?: 'ltr' | 'rtl';
+  /** Pre-computed word→translation map from batch translate. */
+  translationMap?: WordTranslationMap;
   recordingBlob: Blob | null;
   timing?: WordTiming;
   /** Immersive moment data for this word, if any. */
@@ -67,11 +69,9 @@ function scoreEmoji(score: number): string {
   return '❌';
 }
 
-const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, targetLang = 'he', textDir = 'rtl', recordingBlob, timing, moment, onPracticeResult, onClose }) => {
+const WordPopup: React.FC<WordPopupProps> = ({ word, textDir = 'rtl', translationMap, recordingBlob, timing, moment, onPracticeResult, onClose }) => {
   const cleanWord = word.replace(/[^a-zA-Z']/g, '');
   const syllables = splitSyllables(cleanWord);
-  const [translated, setTranslated] = useState<string | null>(null);
-  const [translating, setTranslating] = useState(true);
   const [playingBack, setPlayingBack] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -90,27 +90,9 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, targetLang = 'he'
   );
   const hasAssessment = sylScores.length > 0;
 
-  useEffect(() => {
-    let cancelled = false;
-    setTranslated(null);
-    setTranslating(true);
-
-    const promise = sentence
-      ? translateWordInContext(word, sentence, targetLang)
-      : translateWord(cleanWord, targetLang);
-
-    promise
-      .then((r) => {
-        if (!cancelled) setTranslated(r.translation);
-      })
-      .catch(() => {
-        if (!cancelled) setTranslated(null);
-      })
-      .finally(() => {
-        if (!cancelled) setTranslating(false);
-      });
-    return () => { cancelled = true; };
-  }, [cleanWord, word, sentence, targetLang]);
+  // Instant lookup from pre-computed map
+  const translated = translationMap?.get(cleanWord.toLowerCase()) ?? null;
+  const translating = translationMap !== undefined && translationMap.size === 0;
 
   useEffect(() => {
     return () => {

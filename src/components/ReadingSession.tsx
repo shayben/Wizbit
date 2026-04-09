@@ -9,8 +9,8 @@ import { calculateGamificationScore } from '../services/gamificationService';
 import { analyzeTextForMoments } from '../services/momentsService';
 import { preloadMoments } from '../services/mediaService';
 import type { PreloadedMoment } from '../services/mediaService';
-import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '../services/translationService';
-import type { SupportedLanguage } from '../services/translationService';
+import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE, batchTranslateText } from '../services/translationService';
+import type { SupportedLanguage, WordTranslationMap } from '../services/translationService';
 
 export interface WordTiming {
   offsetSec: number;
@@ -52,6 +52,17 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
   // Translation language
   const [targetLang, setTargetLang] = useState<SupportedLanguage>(DEFAULT_LANGUAGE);
   const [langPickerOpen, setLangPickerOpen] = useState(false);
+  const [translationMap, setTranslationMap] = useState<WordTranslationMap>(new Map());
+
+  // Batch-translate all words when text or language changes
+  useEffect(() => {
+    let cancelled = false;
+    setTranslationMap(new Map());
+    batchTranslateText(text, targetLang.code, targetLang.label)
+      .then((map) => { if (!cancelled) setTranslationMap(map); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [text, targetLang]);
 
   useEffect(() => {
     if (!immersive) return;
@@ -372,6 +383,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
           sentence={text}
           targetLang={targetLang.code}
           textDir={targetLang.dir}
+          translationMap={translationMap}
           recordingBlob={recordingBlob}
           timing={selectedTiming}
           moment={selectedMoment}
