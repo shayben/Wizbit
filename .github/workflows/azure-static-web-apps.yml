@@ -36,6 +36,9 @@ jobs:
           VITE_AZURE_SPEECH_REGION: ${{ secrets.VITE_AZURE_SPEECH_REGION }}
           VITE_AZURE_TRANSLATOR_KEY: ${{ secrets.VITE_AZURE_TRANSLATOR_KEY }}
           VITE_AZURE_TRANSLATOR_REGION: ${{ secrets.VITE_AZURE_TRANSLATOR_REGION }}
+          VITE_AZURE_OPENAI_ENDPOINT: ${{ secrets.VITE_AZURE_OPENAI_ENDPOINT }}
+          VITE_AZURE_OPENAI_KEY: ${{ secrets.VITE_AZURE_OPENAI_KEY }}
+          VITE_AZURE_OPENAI_DEPLOYMENT: ${{ secrets.VITE_AZURE_OPENAI_DEPLOYMENT }}
 
       - name: Deploy to Azure Static Web Apps
         uses: Azure/static-web-apps-deploy@v1

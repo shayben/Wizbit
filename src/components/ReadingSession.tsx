@@ -1,10 +1,14 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import WordCard from './WordCard';
 import WordPopup from './WordPopup';
+import MomentOverlay from './MomentOverlay';
 import type { WordStatus } from './WordCard';
 import { startWindowedPronunciationAssessment } from '../services/speechService';
 import type { WordResult, AssessmentResult } from '../services/speechService';
 import { calculateGamificationScore } from '../services/gamificationService';
+import { analyzeTextForMoments } from '../services/momentsService';
+import { preloadMoments } from '../services/mediaService';
+import type { PreloadedMoment } from '../services/mediaService';
 
 export interface WordTiming {
   offsetSec: number;
@@ -37,6 +41,23 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
   // Sequential cursor — tracks the next word to read
   const [nextWordIndex, setNextWordIndex] = useState(0);
   const nextWordRef = useRef(0);
+
+  // Immersive moments
+  const [immersive, setImmersive] = useState(true);
+  const [moments, setMoments] = useState<PreloadedMoment[]>([]);
+  const [momentsLoading, setMomentsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!immersive) return;
+    let cancelled = false;
+    setMomentsLoading(true);
+    analyzeTextForMoments(words)
+      .then((raw) => (!cancelled ? preloadMoments(raw) : []))
+      .then((loaded) => { if (!cancelled) setMoments(loaded); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setMomentsLoading(false); });
+    return () => { cancelled = true; };
+  }, [words, immersive]);
 
   // Audio recording state
   const [recordingBlob, setRecordingBlob] = useState<Blob | null>(null);
@@ -210,6 +231,18 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
         )}
         <button
           type="button"
+          onClick={() => setImmersive((v) => !v)}
+          className={`py-4 px-5 rounded-2xl font-bold text-xl transition-colors ${
+            immersive
+              ? 'bg-purple-100 text-purple-600'
+              : 'bg-gray-100 text-gray-400'
+          }`}
+          title={immersive ? 'Immersive mode on' : 'Immersive mode off'}
+        >
+          ✨
+        </button>
+        <button
+          type="button"
           onClick={onReset}
           className="py-4 px-5 rounded-2xl bg-gray-100 text-gray-500 font-bold text-xl
                      active:bg-gray-200 transition-colors"
@@ -221,6 +254,15 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
 
       {error && (
         <p className="text-red-600 text-sm text-center bg-red-50 rounded-xl p-3">{error}</p>
+      )}
+
+      {immersive && momentsLoading && (
+        <p className="text-purple-400 text-xs text-center">✨ Preparing immersive experience…</p>
+      )}
+
+      {/* Immersive moment overlay (fixed-position, non-obstructive) */}
+      {immersive && moments.length > 0 && (
+        <MomentOverlay moments={moments} currentWordIndex={nextWordIndex} />
       )}
 
       {/* Reading area — looks like a paragraph in a textbook */}
