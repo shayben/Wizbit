@@ -1,14 +1,18 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { splitSyllables } from '../services/syllableService';
-import { translateWordInContext, translateToHebrew } from '../services/translationService';
+import { translateWordInContext, translateWord } from '../services/translationService';
 import { speakWord, assessWord } from '../services/speechService';
 import type { WordResult } from '../services/speechService';
 import type { WordTiming } from './ReadingSession';
 
 interface WordPopupProps {
   word: string;
-  /** Surrounding text used to contextualise the Hebrew translation. */
+  /** Surrounding text used to contextualise the translation. */
   sentence?: string;
+  /** Target language code (default: 'he'). */
+  targetLang?: string;
+  /** Text direction of the target language. */
+  textDir?: 'ltr' | 'rtl';
   recordingBlob: Blob | null;
   timing?: WordTiming;
   /** Called when the user successfully practises the word. */
@@ -60,10 +64,10 @@ function scoreEmoji(score: number): string {
   return '❌';
 }
 
-const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, timing, onPracticeResult, onClose }) => {
+const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, targetLang = 'he', textDir = 'rtl', recordingBlob, timing, onPracticeResult, onClose }) => {
   const cleanWord = word.replace(/[^a-zA-Z']/g, '');
   const syllables = splitSyllables(cleanWord);
-  const [hebrew, setHebrew] = useState<string | null>(null);
+  const [translated, setTranslated] = useState<string | null>(null);
   const [translating, setTranslating] = useState(true);
   const [playingBack, setPlayingBack] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -85,22 +89,25 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, ti
 
   useEffect(() => {
     let cancelled = false;
+    setTranslated(null);
+    setTranslating(true);
+
     const promise = sentence
-      ? translateWordInContext(word, sentence)
-      : translateToHebrew(cleanWord);
+      ? translateWordInContext(word, sentence, targetLang)
+      : translateWord(cleanWord, targetLang);
 
     promise
       .then((r) => {
-        if (!cancelled) setHebrew(r.hebrew);
+        if (!cancelled) setTranslated(r.translation);
       })
       .catch(() => {
-        if (!cancelled) setHebrew(null);
+        if (!cancelled) setTranslated(null);
       })
       .finally(() => {
         if (!cancelled) setTranslating(false);
       });
     return () => { cancelled = true; };
-  }, [cleanWord, word, sentence]);
+  }, [cleanWord, word, sentence, targetLang]);
 
   useEffect(() => {
     return () => {
@@ -218,12 +225,12 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, ti
         )}
       </div>
 
-      {/* Hebrew translation */}
+      {/* Translation */}
       <div className="mb-3 md:mb-4 min-h-7">
         {translating ? (
           <span className="text-gray-400 text-sm md:text-base">Translating…</span>
-        ) : hebrew ? (
-          <span className="text-xl md:text-2xl font-medium text-gray-600" dir="rtl">{hebrew}</span>
+        ) : translated ? (
+          <span className="text-xl md:text-2xl font-medium text-gray-600" dir={textDir}>{translated}</span>
         ) : null}
       </div>
 

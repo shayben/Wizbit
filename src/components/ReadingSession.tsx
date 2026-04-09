@@ -9,6 +9,8 @@ import { calculateGamificationScore } from '../services/gamificationService';
 import { analyzeTextForMoments } from '../services/momentsService';
 import { preloadMoments } from '../services/mediaService';
 import type { PreloadedMoment } from '../services/mediaService';
+import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '../services/translationService';
+import type { SupportedLanguage } from '../services/translationService';
 
 export interface WordTiming {
   offsetSec: number;
@@ -46,6 +48,10 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
   const [immersive, setImmersive] = useState(true);
   const [moments, setMoments] = useState<PreloadedMoment[]>([]);
   const [momentsLoading, setMomentsLoading] = useState(false);
+
+  // Translation language
+  const [targetLang, setTargetLang] = useState<SupportedLanguage>(DEFAULT_LANGUAGE);
+  const [langPickerOpen, setLangPickerOpen] = useState(false);
 
   useEffect(() => {
     if (!immersive) return;
@@ -241,6 +247,36 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
         >
           ✨
         </button>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setLangPickerOpen((v) => !v)}
+            className="py-4 md:py-5 px-5 md:px-6 rounded-2xl bg-gray-100 text-gray-500 font-bold text-xl md:text-2xl
+                       active:bg-gray-200 transition-colors"
+            title={`Translate to ${targetLang.label}`}
+          >
+            {targetLang.flag}
+          </button>
+          {langPickerOpen && (
+            <div className="absolute top-full mt-1 right-0 z-40 bg-white rounded-2xl shadow-lg border border-gray-100
+                            p-2 grid grid-cols-5 gap-1 min-w-[200px]">
+              {SUPPORTED_LANGUAGES.map((lang) => (
+                <button
+                  key={lang.code}
+                  type="button"
+                  onClick={() => { setTargetLang(lang); setLangPickerOpen(false); }}
+                  className={`flex flex-col items-center gap-0.5 py-2 px-1 rounded-xl text-center transition-colors
+                    ${lang.code === targetLang.code
+                      ? 'bg-indigo-100 border border-indigo-300'
+                      : 'hover:bg-gray-50 active:bg-gray-100'}`}
+                >
+                  <span className="text-lg">{lang.flag}</span>
+                  <span className="text-[10px] md:text-xs text-gray-500 leading-tight">{lang.label}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <button
           type="button"
           onClick={onReset}
@@ -323,6 +359,8 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
         <WordPopup
           word={selectedWord}
           sentence={text}
+          targetLang={targetLang.code}
+          textDir={targetLang.dir}
           recordingBlob={recordingBlob}
           timing={selectedTiming}
           onPracticeResult={handlePracticeResult}
