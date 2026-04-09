@@ -1,45 +1,61 @@
 # Copilot Instructions — ReadingAssistant
 
-## Build & Run
+## Build, Test & Lint
 
 ```bash
-npm run build    # tsc -b && vite build → outputs to dist/
-npm run dev      # local dev server at http://localhost:5173
-npm run lint     # eslint (TS + React Hooks + React Refresh)
+npm run build        # tsc -b && vite build → outputs to dist/
+npm run dev          # local dev server at http://localhost:5173
+npm run lint         # eslint (TS + React Hooks + React Refresh)
+npm test             # vitest run (all tests)
+npx vitest run src/test/trophyService.test.ts   # run a single test file
+npx vitest -t "awards first_read"               # run a single test by name
 ```
-
-No test framework is configured. There is no `npm test` script.
 
 ## Architecture
 
-**React 19 + Vite + TypeScript + Tailwind CSS v4** single-page app. No router — navigation is a state machine in `App.tsx` (`AppStep` type: `home | camera | processing | reading | demo-pick | adventure`), rendered via early-return branches.
+**React 19 + Vite + TypeScript + Tailwind CSS v4** single-page app. No router — navigation is a state machine in `App.tsx` (`AppStep` type: `home | camera | processing | reading | demo-pick | adventure | dashboard | my-stories`), rendered via early-return branches driven by `useAppStep()`.
 
-### Azure Services (all called directly from the browser)
+### Data Flow
+
+```
+App.tsx (state machine)
+  ├─ ReadingSession (core reading experience)
+  │    ├─ useAssessment (speech assessment hook)
+  │    ├─ useRecording (audio recording hook)
+  │    ├─ useMoments (immersive moments hook)
+  │    ├─ gamificationService (scoring)
+  │    ├─ progressService → Cosmos DB / localStorage
+  │    └─ trophyService (award evaluation)
+  ├─ AdventureMode (story generation loop)
+  │    ├─ storyService → Azure OpenAI
+  │    ├─ storyLibraryService → localStorage
+  │    └─ ReadingSession (embedded for each chapter)
+  ├─ ProgressDashboard (history, trophies, analytics)
+  └─ StoryLibrary (browse/resume saved stories)
+```
+
+### Auth
+
+Dual SSO via `AuthContext`: Microsoft (MSAL popup) and Google (`@react-oauth/google`). Auth is optional — the app works without SSO when env vars are absent. Provider preference and Google credentials persist in `localStorage`. MSAL uses `localStorage` for cross-session token caching.
+
+### Persistence
+
+- **Progress/trophies**: `progressService` writes to localStorage first, then syncs to Azure Cosmos DB if configured (partition key `/uid`).
+- **Story library**: `storyLibraryService` uses localStorage only. Stories save incrementally after each chapter and support resume.
+- **Moment cache**: Pre-generated static JSON at `/momentCache.json`, preloaded at startup. Regenerate with `node scripts/generateMomentCache.mjs`.
+
+### Azure Services (called directly from the browser)
 
 | Service | SDK / Protocol | Used For |
 |---|---|---|
 | Azure OpenAI (GPT-4o-mini) | REST `chat/completions` | OCR post-processing, immersive moments, story generation, batch translation |
 | Azure Computer Vision | REST Read API | Camera OCR |
-| Azure Speech | `microsoft-cognitiveservices-speech-sdk` | Pronunciation assessment, TTS |
-| Azure Translator | REST v3.0 | Per-word contextual translation (legacy, being replaced by batch AOAI) |
+| Azure Speech | `microsoft-cognitiveservices-speech-sdk` | Pronunciation assessment, TTS, STT |
+| Azure Translator | REST v3.0 | Per-word contextual translation |
+| Azure Cosmos DB | REST with HMAC-SHA256 | Progress, session history, trophies |
+| Microsoft Entra ID | MSAL.js | SSO (Microsoft accounts) |
 
-All credentials come from `VITE_` env vars (see `.env.example`). **These are baked into the client bundle at build time and visible in the browser** — this is by design for this app.
-
-### Key Components
-
-- **`App.tsx`** — State machine root: camera capture, OCR processing, demo level picker, adventure mode routing.
-- **`ReadingSession`** — Core reading experience: word display, windowed pronunciation assessment, recording, gamification scoring, immersive moments, language toggle, batch translation.
-- **`WordPopup`** — Fixed bottom-sheet modal: syllable breakdown, per-phoneme accuracy colors, translation (instant lookup from pre-computed map), practice mode, moment media.
-- **`AdventureMode`** — Choose-your-own-adventure orchestrator using `ReadingSession` for each chapter.
-- **`MomentOverlay`** — Animated image + caption overlay triggered during reading.
-
-### Key Services
-
-- **`speechService`** — Windowed pronunciation assessment (5-word windows, auto-advancing cursor), single-word assessment for practice, TTS playback.
-- **`translationService`** — `batchTranslateText()` sends all unique words + full text to GPT in one call, returns a `Map<string, string>` for instant popup lookups. Supports 10 languages.
-- **`momentsService`** — GPT text analysis identifying 2–4 "immersive moments" per text. Results are cached in-memory at runtime. Demo paragraphs use pre-generated static cache (`src/data/momentCache.ts`).
-- **`storyService`** — GPT chapter generation with rolling summary context (not full chapter history) to stay within token budget.
-- **`ocrService`** — Azure Vision Read API + GPT post-processing for OCR correction. Includes image resize to stay under Azure's 4MB limit.
+All credentials come from `VITE_` env vars (see `.env.example`). These are baked into the client bundle at build time — this is by design.
 
 ## Conventions
 
@@ -57,20 +73,39 @@ Every Azure-calling service follows a consistent structure:
 - Props typed with `interface FooProps`, components as `React.FC<FooProps>`
 - Local state via hooks (`useState`/`useEffect`/`useRef`/`useCallback`/`useMemo`)
 - Async effects use `let cancelled = false` + cleanup return for race condition safety
-- Mobile-first: large tap targets, fixed overlays, `overscroll-behavior: contain` to prevent pull-to-refresh on bottom sheets
+- Mobile-first: large tap targets, fixed overlays, `overscroll-behavior: contain`
 
 ### Styling
 
 - Tailwind utility classes inline (no CSS modules, no styled-components)
 - Responsive via `md:` breakpoints for iPad/tablet
-- Custom animations defined in `src/index.css`: `animate-slide-up`, `animate-fade-in`, `animate-next-word` (pulse)
-- Use SVG icons instead of emoji for precise sizing/alignment in interactive elements
+- Custom animations in `src/index.css`: `animate-slide-up`, `animate-fade-in`, `animate-next-word`
+
+### ESLint Strictness
+
+The `react-hooks` plugin enforces strict rules including `react-hooks/set-state-in-effect` (disallows `setState` inside effects, even indirectly). When an effect must trigger async state changes (e.g., resume-on-mount), use a ref flag guard with an inline `eslint-disable-line react-hooks/set-state-in-effect` comment. Similarly, `react-hooks/exhaustive-deps` sometimes needs suppression for intentional one-time effects. Always use inline disable comments, not block disables.
+
+### Trophy System
+
+Trophies are pure functions in `trophyService.ts`. `computeNewTrophies(progress, earnedIds, storyStats?)` evaluates all 33 trophy conditions and returns newly earned IDs. Trophy evaluation runs in `ReadingSession` after each session completes. Each trophy has an `id`, `emoji`, `name`, `description`, and `category` for grouped display. To add a trophy: define it in `ALL_TROPHIES`, add evaluation logic in `computeNewTrophies`, add a test in `src/test/trophyService.test.ts`.
+
+### Testing
+
+- Framework: **Vitest** with `jsdom` environment
+- Tests live in `src/test/*.test.ts`
+- Setup file: `src/test/setup.ts` (imports `@testing-library/jest-dom/vitest`)
+- Tests are unit tests for pure service logic (gamification, syllables, trophies, consecutive weeks)
+- No component/integration tests currently
 
 ### Static Data
 
-- `src/data/demoParagraphs.ts` — 7 reading levels × 3 paragraphs each
-- `src/data/momentCache.ts` — Pre-generated immersive moments keyed by `"{grade}-{paragraphIndex}"`. Regenerate with `node scripts/generateMomentCache.mjs` (requires `.env` credentials).
+- `src/data/demoParagraphs.ts` — 7 reading levels (K–6) × 3 paragraphs each
+- `src/data/momentCache.ts` — Pre-generated immersive moments keyed by `"{grade}-{paragraphIndex}"`
 
 ## Deployment
 
-Azure Static Web Apps via GitHub Actions (`.github/workflows/azure-static-web-apps.yml`). Deploys on push to `main`. Azure secrets are injected as `VITE_` env vars during the build step. SPA routing config is in `public/staticwebapp.config.json`.
+Azure Static Web Apps via GitHub Actions (`.github/workflows/azure-static-web-apps.yml`). Pipeline: `npm ci` → lint → test → build (with `VITE_` secrets injected) → deploy `dist/`. Triggers on push to `main` and PRs. SPA routing and CSP headers are in `public/staticwebapp.config.json`.
+
+### CSP Notes
+
+The Speech SDK requires comprehensive CSP entries: `wss://` + `https://` for speech domains, `worker-src blob:`, `script-src 'wasm-unsafe-eval'`, and `media-src mediastream:`. Google sign-in needs `accounts.google.com` in `script-src`, `connect-src`, and `frame-src`. When adding new external APIs, update the CSP in `staticwebapp.config.json`.
