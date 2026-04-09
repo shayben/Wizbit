@@ -267,19 +267,19 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
           </button>
           {langPickerOpen && (
             <div className="absolute top-full mt-1 right-0 z-40 bg-white rounded-2xl shadow-lg border border-gray-100
-                            p-2 grid grid-cols-5 gap-1 min-w-[200px]">
+                            p-2 w-48 md:w-52 max-h-72 overflow-y-auto">
               {SUPPORTED_LANGUAGES.map((lang) => (
                 <button
                   key={lang.code}
                   type="button"
                   onClick={() => { setTargetLang(lang); setLangPickerOpen(false); }}
-                  className={`flex flex-col items-center gap-0.5 py-2 px-1 rounded-xl text-center transition-colors
+                  className={`flex items-center gap-2.5 w-full py-2 px-3 rounded-xl text-left transition-colors
                     ${lang.code === targetLang.code
-                      ? 'bg-indigo-100 border border-indigo-300'
-                      : 'hover:bg-gray-50 active:bg-gray-100'}`}
+                      ? 'bg-indigo-100'
+                      : 'active:bg-gray-100'}`}
                 >
-                  <span className="text-lg">{lang.flag}</span>
-                  <span className="text-[10px] md:text-xs text-gray-500 leading-tight">{lang.label}</span>
+                  <span className="text-lg shrink-0">{lang.flag}</span>
+                  <span className="text-sm md:text-base text-gray-700 font-medium">{lang.label}</span>
                 </button>
               ))}
             </div>
