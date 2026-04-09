@@ -28,7 +28,45 @@ interface ReadingSessionProps {
   onReset: () => void;
 }
 
-const WINDOW_SIZE = 5;
+const SENTENCE_END = /[.!?;:]["'"\u201D\u2019)\]]*$/;
+const MAX_GROUP_WORDS = 25;
+const MIN_GROUP_WORDS = 3;
+
+/**
+ * Split a flat word array into sentence-aligned groups.
+ * Each group becomes one recognition window so restarts
+ * happen at natural pauses instead of mid-sentence.
+ */
+function segmentBySentence(words: string[]): string[][] {
+  if (words.length === 0) return [];
+
+  const groups: string[][] = [];
+  let current: string[] = [];
+
+  for (const word of words) {
+    current.push(word);
+
+    const atSentenceEnd = SENTENCE_END.test(word);
+    const longEnough = current.length >= MIN_GROUP_WORDS;
+    const tooLong = current.length >= MAX_GROUP_WORDS;
+
+    if ((atSentenceEnd && longEnough) || tooLong) {
+      groups.push(current);
+      current = [];
+    }
+  }
+
+  if (current.length > 0) {
+    // Merge a tiny remainder into the previous group
+    if (groups.length > 0 && current.length < MIN_GROUP_WORDS) {
+      groups[groups.length - 1].push(...current);
+    } else {
+      groups.push(current);
+    }
+  }
+
+  return groups;
+}
 
 function tokenise(text: string): string[] {
   return text.match(/\S+/g) ?? [];
@@ -37,6 +75,7 @@ function tokenise(text: string): string[] {
 const ReadingSession: React.FC<ReadingSessionProps> = ({ text, momentCacheKey, onReset }) => {
   const { user } = useAuth();
   const words = useMemo(() => tokenise(text), [text]);
+  const wordGroups = useMemo(() => segmentBySentence(words), [words]);
 
   const { recordingBlob, startRecording, stopRecording, cleanup: cleanupRecording } = useRecording();
 
@@ -46,7 +85,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, momentCacheKey, o
     stopListening: stopAssessment, updateWordResult,
   } = useAssessment({
     words,
-    windowSize: WINDOW_SIZE,
+    wordGroups,
     onSessionDone: stopRecording,
   });
 

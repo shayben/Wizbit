@@ -193,25 +193,23 @@ export function startPronunciationAssessment(
 }
 
 /**
- * Start a windowed pronunciation assessment.
+ * Start a sentence-windowed pronunciation assessment.
  *
- * Instead of sending the entire text as the reference, the text is broken
- * into windows of `windowSize` words. Each window runs its own recognition
- * session. Word offsets are adjusted so they stay cumulative across windows
- * (aligned with a continuous audio recording).
+ * Each entry in `wordGroups` becomes one recognition window. Groups
+ * should be aligned to sentence boundaries so that the recogniser
+ * restarts at natural reading pauses rather than mid-sentence.
  *
  * Insertions are filtered out — `onWord` only fires for reference words,
  * one at a time, in strict reading order.
  */
 export function startWindowedPronunciationAssessment(
-  words: string[],
-  windowSize: number,
+  wordGroups: string[][],
   onWord: WordCallback,
   onAllDone: DoneCallback,
   onError: ErrorCallback,
   locale: string = DEFAULT_LOCALE,
 ): () => void {
-  let cursor = 0;
+  let groupIdx = 0;
   let currentStop: (() => void) | null = null;
   let stopped = false;
   let doneReported = false;
@@ -234,13 +232,14 @@ export function startWindowedPronunciationAssessment(
   }
 
   function startNextWindow() {
-    if (cursor >= words.length || stopped) {
+    if (groupIdx >= wordGroups.length || stopped) {
       reportDone();
       return;
     }
 
-    const windowText = words.slice(cursor, cursor + windowSize).join(' ');
-    const windowCount = Math.min(windowSize, words.length - cursor);
+    const group = wordGroups[groupIdx];
+    const windowText = group.join(' ');
+    const windowCount = group.length;
     let processed = 0;
     let advancing = false;
     const elapsed = (Date.now() - t0) / 1000;
@@ -250,10 +249,10 @@ export function startWindowedPronunciationAssessment(
 
       onWord({ ...result, offsetSec: result.offsetSec + elapsed });
       processed++;
-      cursor++;
 
       if (processed >= windowCount) {
         advancing = true;
+        groupIdx++;
         currentStop?.();
       }
     };

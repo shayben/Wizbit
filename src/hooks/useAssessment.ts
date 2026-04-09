@@ -16,11 +16,12 @@ export interface WordTiming {
 
 interface UseAssessmentOptions {
   words: string[];
-  windowSize: number;
+  /** Sentence-aligned word groups — each group becomes one recognition window. */
+  wordGroups: string[][];
   onSessionDone?: () => void;
 }
 
-export function useAssessment({ words, windowSize, onSessionDone }: UseAssessmentOptions) {
+export function useAssessment({ words, wordGroups, onSessionDone }: UseAssessmentOptions) {
   const [statuses, setStatuses] = useState<Record<number, WordStatus>>({});
   const [scores, setScores] = useState<Record<number, number>>({});
   const [wordTimings, setWordTimings] = useState<Record<number, WordTiming>>({});
@@ -83,8 +84,7 @@ export function useAssessment({ words, windowSize, onSessionDone }: UseAssessmen
 
     try {
       const stop = startWindowedPronunciationAssessment(
-        words,
-        windowSize,
+        wordGroups,
         handleWordResult,
         handleDone,
         handleError,
@@ -94,7 +94,7 @@ export function useAssessment({ words, windowSize, onSessionDone }: UseAssessmen
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [words, windowSize, handleWordResult, handleDone, handleError]);
+  }, [wordGroups, handleWordResult, handleDone, handleError]);
 
   const stopListening = useCallback(() => {
     stopRef.current?.();
