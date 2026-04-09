@@ -2,11 +2,12 @@
  * Story Library — browse saved stories, re-read chapters, or continue in-progress adventures.
  */
 
-import React, { useState, useCallback, useMemo } from 'react';
-import { getStories, deleteStory } from '../services/storyLibraryService';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { loadStories, deleteStory } from '../services/storyLibraryService';
 import type { SavedStory } from '../services/storyLibraryService';
 import ReadingSession from './ReadingSession';
 import { deserializeRegistry } from '../services/stickerService';
+import { useAuth } from '../contexts/AuthContext';
 
 interface StoryLibraryProps {
   onClose: () => void;
@@ -15,16 +16,24 @@ interface StoryLibraryProps {
 }
 
 const StoryLibrary: React.FC<StoryLibraryProps> = ({ onClose, onContinue }) => {
-  const [stories, setStories] = useState<SavedStory[]>(() => getStories());
+  const { user } = useAuth();
+  const [stories, setStories] = useState<SavedStory[]>([]);
+  const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [readingChapter, setReadingChapter] = useState<{ story: SavedStory; chapterIdx: number } | null>(null);
 
-  const reload = useCallback(() => setStories(getStories()), []);
+  useEffect(() => {
+    let cancelled = false;
+    loadStories(user?.uid)
+      .then((s) => { if (!cancelled) setStories(s); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [user?.uid]);
 
   const handleDelete = useCallback((id: string) => {
-    deleteStory(id);
-    reload();
-  }, [reload]);
+    deleteStory(id, user?.uid);
+    setStories((prev) => prev.filter((s) => s.id !== id));
+  }, [user?.uid]);
 
   // Restore sticker registry from the selected story for visual consistency
   const readingStoryRegistry = useMemo(
@@ -112,11 +121,18 @@ const StoryLibrary: React.FC<StoryLibraryProps> = ({ onClose, onContinue }) => {
           ← Back
         </button>
         <h2 className="text-2xl md:text-3xl font-bold text-purple-700 mb-1">📚 My Stories</h2>
+        {loading ? (
+          <div className="flex items-center gap-2 text-purple-400 text-sm md:text-base mb-5">
+            <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+            Loading stories…
+          </div>
+        ) : (
         <p className="text-gray-400 text-sm md:text-base mb-5">
           {stories.length === 0
             ? 'No saved stories yet. Start an adventure to see it here!'
             : `${stories.length} ${stories.length === 1 ? 'story' : 'stories'} saved`}
         </p>
+        )}
 
         <div className="flex flex-col gap-4">
           {stories.map((story) => {

@@ -243,7 +243,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({
         }
         const existingTrophies = await loadTrophies(user.uid);
         const earnedIds = new Set(existingTrophies.map((t) => t.id));
-        const newIds = computeNewTrophies(progress, earnedIds, getStoryStats());
+        const newIds = computeNewTrophies(progress, earnedIds, getStoryStats(user.uid));
         if (newIds.length > 0) {
           await saveTrophies(user.uid, newIds);
           setNewTrophies(newIds.map((id) => getTrophy(id)!).filter(Boolean));

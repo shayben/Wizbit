@@ -11,6 +11,7 @@ import {
   deserializeRegistry,
   type StickerRegistry,
 } from '../services/stickerService';
+import { useAuth } from '../contexts/AuthContext';
 
 type AdventureStep = 'prompt' | 'generating' | 'reading' | 'choosing' | 'ending';
 
@@ -30,6 +31,7 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
   resumeStory,
   onReset,
 }) => {
+  const { user } = useAuth();
   // If resuming, go straight to generating the next chapter
   const [step, setStep] = useState<AdventureStep>(resumeStory ? 'generating' : 'prompt');
   const [storyContext, setStoryContext] = useState<StoryContext>(
@@ -78,7 +80,7 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
         storyContext: ctx,
         completed,
         stickerRegistry: serializeRegistry(stickerRegistryRef.current),
-      });
+      }, user?.uid);
     } else {
       const saved = createStory({
         prompt: ctx.prompt,
@@ -88,10 +90,10 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
         storyContext: ctx,
         stickerRegistry: serializeRegistry(stickerRegistryRef.current),
         completed,
-      });
+      }, user?.uid);
       savedStoryIdRef.current = saved.id;
     }
-  }, [readingLevel, levelEmoji]);
+  }, [readingLevel, levelEmoji, user?.uid]);
 
   const generate = useCallback(async (ctx: StoryContext, choice?: string) => {
     setStep('generating');
