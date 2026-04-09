@@ -158,6 +158,22 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
     setSelectedWordIndex(index);
   }, []);
 
+  const handlePracticeResult = useCallback((result: import('../services/speechService').WordResult) => {
+    if (selectedWordIndex === null) return;
+    const status: WordStatus =
+      result.errorType === 'None' || result.accuracyScore >= 70 ? 'correct' : 'mispronounced';
+    setStatuses((prev) => ({ ...prev, [selectedWordIndex]: status }));
+    setScores((prev) => ({ ...prev, [selectedWordIndex]: result.accuracyScore }));
+    setWordTimings((prev) => ({
+      ...prev,
+      [selectedWordIndex]: {
+        offsetSec: 0,
+        durationSec: 0,
+        phonemeScores: result.phonemeScores,
+      },
+    }));
+  }, [selectedWordIndex]);
+
   const gamificationScore = useMemo(
     () => calculateGamificationScore(words, statuses, scores, fluencyScore),
     [words, statuses, scores, fluencyScore],
@@ -267,6 +283,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
           sentence={text}
           recordingBlob={recordingBlob}
           timing={selectedTiming}
+          onPracticeResult={handlePracticeResult}
           onClose={() => setSelectedWordIndex(null)}
         />
       )}

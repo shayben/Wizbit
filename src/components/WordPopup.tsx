@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { splitSyllables } from '../services/syllableService';
 import { translateWordInContext, translateToHebrew } from '../services/translationService';
-import { speakWord } from '../services/speechService';
+import { speakWord, assessWord } from '../services/speechService';
+import type { WordResult } from '../services/speechService';
 import type { WordTiming } from './ReadingSession';
 
 interface WordPopupProps {
@@ -10,6 +11,8 @@ interface WordPopupProps {
   sentence?: string;
   recordingBlob: Blob | null;
   timing?: WordTiming;
+  /** Called when the user successfully practises the word. */
+  onPracticeResult?: (result: WordResult) => void;
   onClose: () => void;
 }
 
@@ -57,7 +60,7 @@ function scoreEmoji(score: number): string {
   return '❌';
 }
 
-const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, timing, onClose }) => {
+const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, timing, onPracticeResult, onClose }) => {
   const cleanWord = word.replace(/[^a-zA-Z']/g, '');
   const syllables = splitSyllables(cleanWord);
   const [hebrew, setHebrew] = useState<string | null>(null);
@@ -66,10 +69,17 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, ti
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<number | null>(null);
 
-  const phonemeScores = timing?.phonemeScores ?? [];
+  // Practice state
+  const [practicing, setPracticing] = useState(false);
+  const [practiceScore, setPracticeScore] = useState<number | null>(null);
+  const [practicePhonemes, setPracticePhonemes] = useState<number[]>([]);
+  const [practiceError, setPracticeError] = useState<string | null>(null);
+  const cancelRef = useRef<(() => void) | null>(null);
+
+  const activePhonemes = practicePhonemes.length > 0 ? practicePhonemes : (timing?.phonemeScores ?? []);
   const sylScores = useMemo(
-    () => syllableScores(syllables, phonemeScores),
-    [syllables, phonemeScores],
+    () => syllableScores(syllables, activePhonemes),
+    [syllables, activePhonemes],
   );
   const hasAssessment = sylScores.length > 0;
 
@@ -99,10 +109,33 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, ti
         URL.revokeObjectURL(audioRef.current.src);
       }
       if (timerRef.current) clearTimeout(timerRef.current);
+      cancelRef.current?.();
     };
   }, []);
 
   const hasRecording = !!recordingBlob && !!timing && timing.durationSec > 0;
+
+  const handlePractice = useCallback(async () => {
+    setPracticing(true);
+    setPracticeScore(null);
+    setPracticePhonemes([]);
+    setPracticeError(null);
+
+    const { promise, cancel } = assessWord(cleanWord);
+    cancelRef.current = cancel;
+
+    try {
+      const result = await promise;
+      setPracticeScore(Math.round(result.accuracyScore));
+      setPracticePhonemes(result.phonemeScores);
+      onPracticeResult?.(result);
+    } catch (err) {
+      setPracticeError(err instanceof Error ? err.message : 'Try again');
+    } finally {
+      setPracticing(false);
+      cancelRef.current = null;
+    }
+  }, [cleanWord, onPracticeResult]);
 
   const handlePlayRecording = useCallback(() => {
     if (!recordingBlob || !timing) return;
@@ -195,7 +228,7 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, ti
       </div>
 
       {/* Action buttons */}
-      <div className="flex gap-2">
+      <div className="flex gap-2 flex-wrap">
         {hasRecording && (
           <button
             type="button"
@@ -213,12 +246,43 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, ti
         <button
           type="button"
           onClick={handlePlayCorrect}
-          className={`${hasRecording ? 'flex-1' : 'w-full'} py-2.5 rounded-xl bg-indigo-500 text-white font-bold text-base
-                     active:bg-indigo-600 transition-colors`}
+          className="flex-1 py-2.5 rounded-xl bg-indigo-500 text-white font-bold text-base
+                     active:bg-indigo-600 transition-colors"
         >
           🔊 Hear it
         </button>
+        <button
+          type="button"
+          onClick={handlePractice}
+          disabled={practicing}
+          className={`w-full py-2.5 rounded-xl font-bold text-base transition-colors ${
+            practicing
+              ? 'bg-green-200 text-green-700 animate-pulse'
+              : 'bg-green-500 text-white active:bg-green-600'
+          }`}
+        >
+          {practicing ? '🎤 Listening…' : '🎤 Practice this word'}
+        </button>
       </div>
+
+      {/* Practice feedback */}
+      {practiceScore !== null && (
+        <div className={`mt-2 text-center py-2 rounded-xl font-bold text-base ${
+          practiceScore >= 80
+            ? 'bg-green-50 text-green-700'
+            : practiceScore >= 50
+              ? 'bg-amber-50 text-amber-700'
+              : 'bg-red-50 text-red-700'
+        }`}>
+          {practiceScore >= 80 ? '🎉 Great job!' : practiceScore >= 50 ? '👍 Getting closer!' : '💪 Try again!'}{' '}
+          Score: {practiceScore}
+        </div>
+      )}
+      {practiceError && (
+        <div className="mt-2 text-center py-2 rounded-xl bg-gray-50 text-gray-500 text-sm">
+          {practiceError}
+        </div>
+      )}
     </div>
   );
 };

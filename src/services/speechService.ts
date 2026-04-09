@@ -269,3 +269,71 @@ export function speakWord(word: string): void {
     },
   );
 }
+
+/**
+ * One-shot pronunciation assessment for a single word.
+ * Returns a promise that resolves with the WordResult.
+ */
+export function assessWord(word: string): { promise: Promise<WordResult>; cancel: () => void } {
+  const speechConfig = getSpeechConfig();
+  speechConfig.speechRecognitionLanguage = 'en-US';
+
+  const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+
+  const pronunciationConfig = new SpeechSDK.PronunciationAssessmentConfig(
+    word,
+    SpeechSDK.PronunciationAssessmentGradingSystem.HundredMark,
+    SpeechSDK.PronunciationAssessmentGranularity.Phoneme,
+    true,
+  );
+  pronunciationConfig.enableProsodyAssessment = false;
+
+  const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+  pronunciationConfig.applyTo(recognizer);
+
+  const promise = new Promise<WordResult>((resolve, reject) => {
+    recognizer.recognizeOnceAsync(
+      (result) => {
+        recognizer.close();
+        if (result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
+          const json = result.properties.getProperty(
+            SpeechSDK.PropertyId.SpeechServiceResponse_JsonResult,
+          );
+          if (!json) { reject(new Error('No result')); return; }
+          try {
+            const parsed = JSON.parse(json);
+            const nbest = parsed?.NBest?.[0];
+            const w = nbest?.Words?.[0] as Record<string, unknown> | undefined;
+            if (!w) { reject(new Error('No word result')); return; }
+
+            const phonemes = (w.Phonemes as Record<string, unknown>[] | undefined) ?? [];
+            resolve({
+              word: String(w.Word ?? ''),
+              accuracyScore: Number(
+                (w.PronunciationAssessment as Record<string, unknown>)?.AccuracyScore ?? 0,
+              ),
+              errorType: String(
+                (w.PronunciationAssessment as Record<string, unknown>)?.ErrorType ?? 'None',
+              ),
+              offsetSec: 0,
+              durationSec: 0,
+              phonemeScores: phonemes.map((p) =>
+                Number((p.PronunciationAssessment as Record<string, unknown>)?.AccuracyScore ?? 0),
+              ),
+            });
+          } catch { reject(new Error('Parse error')); }
+        } else if (result.reason === SpeechSDK.ResultReason.NoMatch) {
+          reject(new Error('No speech detected — try again'));
+        } else {
+          reject(new Error('Recognition failed'));
+        }
+      },
+      (err) => { recognizer.close(); reject(new Error(String(err))); },
+    );
+  });
+
+  return {
+    promise,
+    cancel: () => recognizer.close(),
+  };
+}
