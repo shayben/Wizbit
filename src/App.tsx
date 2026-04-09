@@ -4,6 +4,7 @@ import AdventureMode from './components/AdventureMode';
 import LoginScreen from './components/LoginScreen';
 import UserHeader from './components/UserHeader';
 import ProgressDashboard from './components/ProgressDashboard';
+import StoryLibrary from './components/StoryLibrary';
 import { recognizeText } from './services/ocrService';
 import { readingLevels } from './data/demoParagraphs';
 import type { ReadingLevel, DemoParagraph } from './data/demoParagraphs';
@@ -132,6 +133,11 @@ export default function App() {
     return <ProgressDashboard user={user} onClose={goHome} />;
   }
 
+  // ── Story Library ──
+  if (step === 'my-stories') {
+    return <StoryLibrary onClose={goHome} />;
+  }
+
   // ── Home: camera button + demo levels ──
   if (step === 'home') {
     return (
@@ -200,6 +206,17 @@ export default function App() {
             </button>
           ))}
         </div>
+
+        {/* My Stories shortcut */}
+        <button
+          type="button"
+          onClick={() => navigate('my-stories')}
+          className="w-full max-w-xs md:max-w-md py-3 md:py-4 rounded-2xl bg-purple-50 border border-purple-100
+                     text-purple-700 font-semibold text-base md:text-lg
+                     active:bg-purple-100 transition-colors"
+        >
+          📚 My Stories
+        </button>
       </div>
     );
   }

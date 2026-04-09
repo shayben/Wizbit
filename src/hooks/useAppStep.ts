@@ -5,7 +5,7 @@
 
 import { useState, useCallback, useRef } from 'react';
 
-export type AppStep = 'home' | 'camera' | 'processing' | 'reading' | 'demo-pick' | 'adventure' | 'dashboard';
+export type AppStep = 'home' | 'camera' | 'processing' | 'reading' | 'demo-pick' | 'adventure' | 'dashboard' | 'my-stories';
 
 export function useAppStep(initial: AppStep = 'home') {
   const [step, setStep] = useState<AppStep>(initial);

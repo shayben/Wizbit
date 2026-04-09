@@ -4,6 +4,7 @@ import ChapterChoices from './ChapterChoices';
 import ReadingSession from './ReadingSession';
 import { generateChapter } from '../services/storyService';
 import type { StoryContext, ChapterResult } from '../services/storyService';
+import { saveStory } from '../services/storyLibraryService';
 
 type AdventureStep = 'prompt' | 'generating' | 'reading' | 'choosing' | 'ending';
 
@@ -29,6 +30,10 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
   const [currentChapter, setCurrentChapter] = useState<ChapterResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [doneReading, setDoneReading] = useState(false);
+  const [storySaved, setStorySaved] = useState(false);
+
+  // Keep full chapter details for saving to library
+  const chaptersDetailRef = React.useRef<ChapterResult[]>([]);
 
   const generate = useCallback(async (ctx: StoryContext, choice?: string) => {
     setStep('generating');
@@ -37,11 +42,25 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
     try {
       const chapter = await generateChapter(ctx, choice);
       setCurrentChapter(chapter);
+      chaptersDetailRef.current = [...chaptersDetailRef.current, chapter];
       if (chapter.isEnding) {
         setStoryContext((prev) => ({
           ...prev,
           chapters: [...prev.chapters, { summary: chapter.summary, choiceMade: '(ending)' }],
         }));
+        // Auto-save completed story to library
+        saveStory({
+          prompt: ctx.prompt,
+          readingLevel,
+          levelEmoji,
+          chapters: [...chaptersDetailRef.current].map((ch, i) => ({
+            number: ch.chapterNumber,
+            title: ch.title,
+            text: ch.text,
+            choiceMade: ctx.chapters[i]?.choiceMade ?? '(ending)',
+          })),
+        });
+        setStorySaved(true);
         setStep('ending');
       } else {
         setStep('reading');
@@ -50,7 +69,7 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
       setError(err instanceof Error ? err.message : 'Failed to generate chapter');
       setStep('prompt');
     }
-  }, []);
+  }, [readingLevel, levelEmoji]);
 
   const handleStartStory = useCallback((prompt: string) => {
     const ctx: StoryContext = { prompt, readingLevel, chapters: [] };
@@ -188,12 +207,17 @@ const AdventureMode: React.FC<AdventureModeProps> = ({
             <p className="text-gray-500 text-sm md:text-base mb-5">
               Great job, storyteller! Every choice you made shaped this adventure.
             </p>
+            {storySaved && (
+              <p className="text-green-600 text-sm font-medium mb-4">✅ Saved to your story library</p>
+            )}
             <div className="flex gap-3">
               <button
                 type="button"
                 onClick={() => {
                   setStoryContext({ prompt: '', readingLevel, chapters: [] });
                   setCurrentChapter(null);
+                  chaptersDetailRef.current = [];
+                  setStorySaved(false);
                   setStep('prompt');
                 }}
                 className="flex-1 py-3 md:py-4 rounded-2xl bg-purple-600 text-white font-bold text-lg md:text-xl
