@@ -300,8 +300,10 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
         <p className="text-red-600 text-sm md:text-base text-center bg-red-50 rounded-xl p-3">{error}</p>
       )}
 
-      {immersive && momentsLoading && (
-        <p className="text-purple-400 text-xs md:text-sm text-center">✨ Preparing immersive experience…</p>
+      {immersive && (
+        <p className={`text-xs md:text-sm text-center h-5 ${momentsLoading ? 'text-purple-400' : 'text-transparent'}`}>
+          ✨ Preparing immersive experience…
+        </p>
       )}
 
       {/* Immersive moment overlay (fixed-position, non-obstructive) */}
