@@ -84,16 +84,18 @@ async function tryLoadAudioFile(category: AmbientCategory): Promise<AudioBuffer 
   const cached = audioFileCache.get(category);
   if (cached === false) return null;
   if (cached) return cached;
-  try {
-    const res = await fetch(`/audio/ambient/${category}.mp3`);
-    if (!res.ok) { audioFileCache.set(category, false); return null; }
-    const buf = await getCtx().decodeAudioData(await res.arrayBuffer());
-    audioFileCache.set(category, buf);
-    return buf;
-  } catch {
-    audioFileCache.set(category, false);
-    return null;
+  // Try MP3 first, then OGG
+  for (const ext of ['mp3', 'ogg']) {
+    try {
+      const res = await fetch(`/audio/ambient/${category}.${ext}`);
+      if (!res.ok) continue;
+      const buf = await getCtx().decodeAudioData(await res.arrayBuffer());
+      audioFileCache.set(category, buf);
+      return buf;
+    } catch { continue; }
   }
+  audioFileCache.set(category, false);
+  return null;
 }
 
 function playAudioFile(buffer: AudioBuffer): AmbientHandle {
