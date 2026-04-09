@@ -1,13 +1,18 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import ReadingSession from './components/ReadingSession';
 import AdventureMode from './components/AdventureMode';
+import LoginScreen from './components/LoginScreen';
+import UserHeader from './components/UserHeader';
+import ProgressDashboard from './components/ProgressDashboard';
 import { recognizeText } from './services/ocrService';
 import { readingLevels } from './data/demoParagraphs';
 import type { ReadingLevel, DemoParagraph } from './data/demoParagraphs';
+import { useAuth } from './contexts/AuthContext';
 
-type AppStep = 'home' | 'camera' | 'processing' | 'reading' | 'demo-pick' | 'adventure';
+type AppStep = 'home' | 'camera' | 'processing' | 'reading' | 'demo-pick' | 'adventure' | 'dashboard';
 
 export default function App() {
+  const { user, loading: authLoading, isConfigured, signOut } = useAuth();
   const [step, setStep] = useState<AppStep>('home');
   const [assignmentText, setAssignmentText] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -106,12 +111,40 @@ export default function App() {
     return () => { streamRef.current?.getTracks().forEach((t) => t.stop()); };
   }, []);
 
+  // ── Auth gates (after all hooks) ──
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Show login screen only when Firebase is configured and nobody is signed in
+  if (isConfigured && !user) {
+    return <LoginScreen />;
+  }
+
+  // ── Progress Dashboard ──
+  if (step === 'dashboard' && user) {
+    return <ProgressDashboard user={user} onClose={() => setStep('home')} />;
+  }
+
   // ── Home: camera button + demo levels ──
   if (step === 'home') {
     return (
       <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white flex flex-col items-center gap-6 md:gap-8 p-6 pt-12 md:pt-16">
         <canvas ref={canvasRef} className="hidden" />
         <h1 className="text-3xl md:text-4xl font-bold text-indigo-700">📖 Reading Assistant</h1>
+
+        {/* User header (SSO) */}
+        {user && (
+          <UserHeader
+            user={user}
+            onOpenDashboard={() => setStep('dashboard')}
+            onSignOut={signOut}
+          />
+        )}
 
         {error && (
           <p className="text-red-600 text-sm text-center bg-red-50 rounded-xl p-3 max-w-xs md:max-w-md">{error}</p>

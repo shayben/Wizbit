@@ -11,6 +11,16 @@ import { preloadMoments } from '../services/mediaService';
 import type { PreloadedMoment } from '../services/mediaService';
 import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE } from '../services/translationService';
 import type { SupportedLanguage } from '../services/translationService';
+import { useAuth } from '../contexts/AuthContext';
+import {
+  saveSession,
+  updatePracticeWords,
+  loadUserProgress,
+  loadTrophies,
+  saveTrophies,
+} from '../services/progressService';
+import { computeNewTrophies, getTrophy } from '../services/trophyService';
+import type { Trophy } from '../services/trophyService';
 
 export interface WordTiming {
   offsetSec: number;
@@ -30,6 +40,7 @@ function tokenise(text: string): string[] {
 }
 
 const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
+  const { user } = useAuth();
   const words = useMemo(() => tokenise(text), [text]);
 
   const [statuses, setStatuses] = useState<Record<number, WordStatus>>({});
@@ -53,6 +64,8 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
   const [targetLang, setTargetLang] = useState<SupportedLanguage>(DEFAULT_LANGUAGE);
   const [langPickerOpen, setLangPickerOpen] = useState(false);
 
+  // Newly awarded trophies (shown inline after session ends)
+  const [newTrophies, setNewTrophies] = useState<Trophy[]>([]);
   useEffect(() => {
     if (!immersive) return;
     let cancelled = false;
@@ -128,6 +141,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
     setFluencyScore(undefined);
     setWordTimings({});
     setRecordingBlob(null);
+    setNewTrophies([]);
     nextWordRef.current = 0;
     setNextWordIndex(0);
     chunksRef.current = [];
@@ -205,6 +219,66 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
     () => calculateGamificationScore(words, statuses, scores, fluencyScore),
     [words, statuses, scores, fluencyScore],
   );
+
+  // ── Persist session + award trophies when the session ends ──
+  useEffect(() => {
+    if (!sessionDone || !gamificationScore || !user) return;
+
+    const sessionId = `${user.uid}_${Date.now()}`;
+    const assessedStatuses = Object.entries(statuses);
+    const wordsNeedPractice = assessedStatuses
+      .filter(([, s]) => s === 'mispronounced' || s === 'skipped')
+      .map(([i]) => words[Number(i)].replace(/[^a-zA-Z']/g, '').toLowerCase())
+      .filter(Boolean);
+    const wordsNowCorrect = assessedStatuses
+      .filter(([, s]) => s === 'correct')
+      .map(([i]) => words[Number(i)].replace(/[^a-zA-Z']/g, '').toLowerCase())
+      .filter(Boolean);
+
+    const accuracy =
+      assessedStatuses.length > 0
+        ? Math.round(
+            (assessedStatuses.filter(([, s]) => s === 'correct').length / assessedStatuses.length) * 100,
+          )
+        : 0;
+
+    (async () => {
+      try {
+        await saveSession(
+          user.uid,
+          sessionId,
+          text,
+          gamificationScore.score,
+          gamificationScore.stars,
+          accuracy,
+          words.length,
+          gamificationScore.hardWordCount,
+          gamificationScore.hardWordCorrect,
+          wordsNeedPractice,
+        );
+
+        const clearedCount = await updatePracticeWords(
+          user.uid,
+          wordsNeedPractice,
+          wordsNowCorrect,
+          sessionId,
+        );
+
+        const progress = await loadUserProgress(user.uid);
+        if (clearedCount > 0) {
+          progress.practiceClearedCount = (progress.practiceClearedCount ?? 0) + clearedCount;
+        }
+        const existingTrophies = await loadTrophies(user.uid);
+        const earnedIds = new Set(existingTrophies.map((t) => t.id));
+        const newIds = computeNewTrophies(progress, earnedIds);
+        if (newIds.length > 0) {
+          await saveTrophies(user.uid, newIds);
+          setNewTrophies(newIds.map((id) => getTrophy(id)!).filter(Boolean));
+        }
+      } catch { /* non-fatal — assessment data is already shown to the user */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionDone]);
 
   const assessedCount = Object.keys(statuses).length;
   const correctCount = Object.values(statuses).filter((s) => s === 'correct').length;
@@ -359,6 +433,27 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
           </p>
         </div>
       )}
+
+      {/* New trophy notifications */}
+      {newTrophies.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {newTrophies.map((trophy) => (
+            <div
+              key={trophy.id}
+              className="rounded-2xl bg-gradient-to-br from-amber-50 to-yellow-50 border border-amber-200
+                         p-4 md:p-5 flex items-center gap-4 shadow-sm"
+            >
+              <span className="text-4xl md:text-5xl">{trophy.emoji}</span>
+              <div>
+                <p className="font-bold text-amber-700 text-base md:text-lg">🏆 Trophy Unlocked!</p>
+                <p className="font-semibold text-amber-800 text-sm md:text-base">{trophy.name}</p>
+                <p className="text-amber-600 text-xs md:text-sm">{trophy.description}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
 
       {/* Word popup (bottom sheet) */}
       {selectedWord && (
