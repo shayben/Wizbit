@@ -141,95 +141,85 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, ti
   }, [cleanWord]);
 
   return (
-    <>
-      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
+    <div className="rounded-2xl bg-indigo-50 border border-indigo-100 p-4 shadow-sm">
+      {/* Header: word + close */}
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-2xl font-bold text-indigo-700">{cleanWord}</span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-gray-400 text-xl px-2 active:text-gray-600"
+        >
+          ✕
+        </button>
+      </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-50 animate-slide-up">
-        <div className="max-w-lg mx-auto bg-white rounded-t-3xl shadow-2xl p-5 pb-8">
-          <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4" />
-
-          {/* Word */}
-          <div className="text-center mb-3">
-            <span className="text-3xl font-bold text-indigo-700">{cleanWord}</span>
-          </div>
-
-          {/* Syllable accuracy breakdown */}
-          <div className="mb-4">
-            <div className="flex items-center justify-center gap-1 flex-wrap">
-              {syllables.map((syl, i) => (
-                <React.Fragment key={i}>
-                  {i > 0 && <span className="text-gray-300 text-xl mx-0.5">·</span>}
-                  <span
-                    className={`text-2xl font-semibold px-2.5 py-1 rounded-lg transition-colors ${
-                      hasAssessment ? scoreColor(sylScores[i]) : 'text-gray-700'
-                    }`}
-                  >
-                    {syl}
-                  </span>
-                </React.Fragment>
-              ))}
-            </div>
-
-            {/* Per-syllable score indicators */}
-            {hasAssessment && (
-              <div className="flex items-center justify-center gap-1 mt-2 flex-wrap">
-                {syllables.map((_syl, i) => (
-                  <React.Fragment key={i}>
-                    {i > 0 && <span className="w-5" />}
-                    <span className="text-xs font-medium text-gray-500 text-center min-w-8">
-                      {scoreEmoji(sylScores[i])} {sylScores[i]}
-                    </span>
-                  </React.Fragment>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Hebrew translation */}
-          <div className="text-center mb-4 min-h-8">
-            {translating ? (
-              <span className="text-gray-400 text-sm">Translating…</span>
-            ) : hebrew ? (
-              <span className="text-2xl font-medium text-gray-600" dir="rtl">{hebrew}</span>
-            ) : null}
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex gap-3">
-            {hasRecording && (
-              <button
-                type="button"
-                onClick={handlePlayRecording}
-                disabled={playingBack}
-                className={`flex-1 py-3 rounded-2xl font-bold text-lg transition-colors shadow-sm ${
-                  playingBack
-                    ? 'bg-amber-300 text-amber-700'
-                    : 'bg-amber-400 text-amber-900 active:bg-amber-500'
+      {/* Syllable accuracy breakdown */}
+      <div className="mb-3">
+        <div className="flex items-center gap-1 flex-wrap">
+          {syllables.map((syl, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <span className="text-gray-300 text-lg mx-0.5">·</span>}
+              <span
+                className={`text-xl font-semibold px-2 py-0.5 rounded-lg transition-colors ${
+                  hasAssessment ? scoreColor(sylScores[i]) : 'text-gray-700'
                 }`}
               >
-                {playingBack ? '🔊 Playing…' : '🎙️ How I Said It'}
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={handlePlayCorrect}
-              className={`${hasRecording ? 'flex-1' : 'w-full'} py-3 rounded-2xl bg-indigo-500 text-white font-bold text-lg
-                         active:bg-indigo-600 transition-colors shadow-sm`}
-            >
-              🔊 Hear it
-            </button>
-          </div>
+                {syl}
+              </span>
+            </React.Fragment>
+          ))}
+        </div>
 
+        {hasAssessment && (
+          <div className="flex items-center gap-1 mt-1.5 flex-wrap">
+            {syllables.map((_syl, i) => (
+              <React.Fragment key={i}>
+                {i > 0 && <span className="w-4" />}
+                <span className="text-xs font-medium text-gray-500 text-center min-w-7">
+                  {scoreEmoji(sylScores[i])} {sylScores[i]}
+                </span>
+              </React.Fragment>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Hebrew translation */}
+      <div className="mb-3 min-h-7">
+        {translating ? (
+          <span className="text-gray-400 text-sm">Translating…</span>
+        ) : hebrew ? (
+          <span className="text-xl font-medium text-gray-600" dir="rtl">{hebrew}</span>
+        ) : null}
+      </div>
+
+      {/* Action buttons */}
+      <div className="flex gap-2">
+        {hasRecording && (
           <button
             type="button"
-            onClick={onClose}
-            className="w-full mt-3 py-2 text-gray-400 text-sm font-medium"
+            onClick={handlePlayRecording}
+            disabled={playingBack}
+            className={`flex-1 py-2.5 rounded-xl font-bold text-base transition-colors ${
+              playingBack
+                ? 'bg-amber-200 text-amber-700'
+                : 'bg-amber-400 text-amber-900 active:bg-amber-500'
+            }`}
           >
-            Close
+            {playingBack ? '🔊 Playing…' : '🎙️ How I Said It'}
           </button>
-        </div>
+        )}
+        <button
+          type="button"
+          onClick={handlePlayCorrect}
+          className={`${hasRecording ? 'flex-1' : 'w-full'} py-2.5 rounded-xl bg-indigo-500 text-white font-bold text-base
+                     active:bg-indigo-600 transition-colors`}
+        >
+          🔊 Hear it
+        </button>
       </div>
-    </>
+    </div>
   );
 };
 
