@@ -197,9 +197,9 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
           onClick={onReset}
           className="py-4 px-5 rounded-2xl bg-gray-100 text-gray-500 font-bold text-xl
                      active:bg-gray-200 transition-colors"
-          title="New photo"
+          title="Back"
         >
-          📷
+          ←
         </button>
       </div>
 
