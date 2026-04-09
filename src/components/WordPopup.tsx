@@ -4,6 +4,7 @@ import { translateWordInContext, translateWord } from '../services/translationSe
 import { speakWord, assessWord } from '../services/speechService';
 import type { WordResult } from '../services/speechService';
 import type { WordTiming } from './ReadingSession';
+import type { PreloadedMoment } from '../services/mediaService';
 
 interface WordPopupProps {
   word: string;
@@ -15,6 +16,8 @@ interface WordPopupProps {
   textDir?: 'ltr' | 'rtl';
   recordingBlob: Blob | null;
   timing?: WordTiming;
+  /** Immersive moment data for this word, if any. */
+  moment?: PreloadedMoment;
   /** Called when the user successfully practises the word. */
   onPracticeResult?: (result: WordResult) => void;
   onClose: () => void;
@@ -64,7 +67,7 @@ function scoreEmoji(score: number): string {
   return '❌';
 }
 
-const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, targetLang = 'he', textDir = 'rtl', recordingBlob, timing, onPracticeResult, onClose }) => {
+const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, targetLang = 'he', textDir = 'rtl', recordingBlob, timing, moment, onPracticeResult, onClose }) => {
   const cleanWord = word.replace(/[^a-zA-Z']/g, '');
   const syllables = splitSyllables(cleanWord);
   const [translated, setTranslated] = useState<string | null>(null);
@@ -249,6 +252,40 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, targetLang = 'he'
           <span className="text-xl md:text-2xl font-medium text-gray-600" dir={textDir}>{translated}</span>
         ) : null}
       </div>
+
+      {/* Immersive moment media */}
+      {moment && (
+        <div className="mb-3 md:mb-4 rounded-xl bg-purple-50 border border-purple-100 p-3 md:p-4">
+          <div className="flex items-start gap-3">
+            {moment.imageUrl && (
+              <img
+                src={moment.imageUrl}
+                alt={moment.caption}
+                className="w-20 h-20 md:w-24 md:h-24 rounded-xl object-cover shrink-0 shadow-sm"
+              />
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm md:text-base text-purple-700 font-medium leading-snug">
+                💡 {moment.caption}
+              </p>
+              {moment.audioUrl && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const a = new Audio(moment.audioUrl);
+                    a.volume = 0.3;
+                    a.play().catch(() => {});
+                  }}
+                  className="mt-2 text-xs md:text-sm font-bold text-purple-600 bg-purple-100 rounded-lg
+                             px-3 py-1.5 active:bg-purple-200 transition-colors"
+                >
+                  🎵 Play sound
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Action buttons */}
       <div className="flex gap-2 md:gap-3 flex-wrap">

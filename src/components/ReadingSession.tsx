@@ -216,6 +216,9 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
 
   const selectedWord = selectedWordIndex !== null ? words[selectedWordIndex] : null;
   const selectedTiming = selectedWordIndex !== null ? wordTimings[selectedWordIndex] : undefined;
+  const selectedMoment = selectedWordIndex !== null
+    ? moments.find((m) => m.wordIndex === selectedWordIndex)
+    : undefined;
 
   return (
     <div className="flex flex-col gap-4 md:gap-6 w-full max-w-lg md:max-w-2xl mx-auto p-4 md:p-8">
@@ -369,6 +372,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
           textDir={targetLang.dir}
           recordingBlob={recordingBlob}
           timing={selectedTiming}
+          moment={selectedMoment}
           onPracticeResult={handlePracticeResult}
           onClose={() => setSelectedWordIndex(null)}
         />
