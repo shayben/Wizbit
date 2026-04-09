@@ -61,6 +61,19 @@ Rules:
 - Do NOT add, rephrase, or summarise — keep the original wording
 - Return the cleaned text only, no commentary`;
 
+const MAX_RETRIES = 3;
+
+async function fetchWithRetry(url: string, init: RequestInit, retries = MAX_RETRIES): Promise<Response> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch(url, init);
+    if (res.status !== 429 || attempt === retries) return res;
+    const retryAfter = Number(res.headers.get('Retry-After') || 0);
+    const delay = Math.max(retryAfter * 1000, 2000 * 2 ** attempt);
+    await new Promise((r) => setTimeout(r, delay));
+  }
+  return fetch(url, init);
+}
+
 /**
  * Use GPT-4o-mini to clean raw OCR lines: remove noise, fix layout.
  * Returns the original text unchanged if the LLM is unavailable.
@@ -73,7 +86,7 @@ async function postprocessOcr(lines: string[]): Promise<string> {
   const url = `${OPENAI_ENDPOINT}/openai/deployments/${OPENAI_DEPLOYMENT}/chat/completions?api-version=2024-02-01`;
 
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithRetry(url, {
       method: 'POST',
       headers: {
         'api-key': OPENAI_KEY,

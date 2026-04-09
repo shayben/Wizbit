@@ -30,7 +30,7 @@ function tokenise(text: string): string[] {
 }
 
 const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
-  const words = tokenise(text);
+  const words = useMemo(() => tokenise(text), [text]);
 
   const [statuses, setStatuses] = useState<Record<number, WordStatus>>({});
   const [scores, setScores] = useState<Record<number, number>>({});
@@ -209,6 +209,11 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
   const assessedCount = Object.keys(statuses).length;
   const correctCount = Object.values(statuses).filter((s) => s === 'correct').length;
 
+  const momentIndices = useMemo(
+    () => new Set(immersive ? moments.map((m) => m.wordIndex) : []),
+    [moments, immersive],
+  );
+
   const selectedWord = selectedWordIndex !== null ? words[selectedWordIndex] : null;
   const selectedTiming = selectedWordIndex !== null ? wordTimings[selectedWordIndex] : undefined;
 
@@ -311,6 +316,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
               index={i}
               status={statuses[i] ?? 'pending'}
               isNext={listening && i === nextWordIndex}
+              hasMoment={momentIndices.has(i)}
               score={scores[i]}
               onClick={handleWordClick}
             />

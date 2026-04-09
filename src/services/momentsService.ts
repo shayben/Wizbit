@@ -2,6 +2,9 @@
  * Analyses reading text with Azure OpenAI GPT-4o-mini to identify
  * "key moments" — points in the text where we can show a relevant
  * image or play a short piece of music to make reading immersive.
+ *
+ * Includes retry with exponential backoff for 429 rate limits and
+ * a simple in-memory cache to avoid duplicate requests.
  */
 
 const OPENAI_ENDPOINT = import.meta.env.VITE_AZURE_OPENAI_ENDPOINT as string;
@@ -29,15 +32,32 @@ For each moment return a JSON object with:
 
 Return ONLY a valid JSON array. No markdown fences, no explanation.`;
 
+const MAX_RETRIES = 3;
+const momentsCache = new Map<string, KeyMoment[]>();
+
+async function fetchWithRetry(url: string, init: RequestInit, retries = MAX_RETRIES): Promise<Response> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const res = await fetch(url, init);
+    if (res.status !== 429 || attempt === retries) return res;
+    const retryAfter = Number(res.headers.get('Retry-After') || 0);
+    const delay = Math.max(retryAfter * 1000, 2000 * 2 ** attempt);
+    await new Promise((r) => setTimeout(r, delay));
+  }
+  return fetch(url, init); // unreachable, but keeps TS happy
+}
+
 export async function analyzeTextForMoments(words: string[]): Promise<KeyMoment[]> {
   if (!OPENAI_ENDPOINT || !OPENAI_KEY || !OPENAI_DEPLOYMENT) return [];
 
   const text = words.join(' ');
+  const cached = momentsCache.get(text);
+  if (cached) return cached;
+
   const indexed = words.map((w, i) => `${i}:${w}`);
   const url = `${OPENAI_ENDPOINT}/openai/deployments/${OPENAI_DEPLOYMENT}/chat/completions?api-version=2024-02-01`;
 
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithRetry(url, {
       method: 'POST',
       headers: {
         'api-key': OPENAI_KEY,
@@ -60,13 +80,16 @@ export async function analyzeTextForMoments(words: string[]): Promise<KeyMoment[
     const jsonStr = content.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
     const moments = JSON.parse(jsonStr) as KeyMoment[];
 
-    return moments.filter(
+    const valid = moments.filter(
       (m) =>
         typeof m.wordIndex === 'number' &&
         m.wordIndex >= 0 &&
         m.wordIndex < words.length &&
         typeof m.caption === 'string',
     );
+
+    momentsCache.set(text, valid);
+    return valid;
   } catch {
     return [];
   }
