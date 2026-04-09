@@ -261,7 +261,6 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
           user.uid,
           wordsNeedPractice,
           wordsNowCorrect,
-          sessionId,
         );
 
         const progress = await loadUserProgress(user.uid);

@@ -69,7 +69,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (cancelled) return;
 
       // Handle redirect response (if any)
-      await msalInstance!.handleRedirectPromise().catch(() => {});
+      await msalInstance!.handleRedirectPromise().catch((err) => {
+        console.warn('[Auth] handleRedirectPromise error:', err);
+      });
 
       const accounts = msalInstance!.getAllAccounts();
       if (accounts.length > 0 && !cancelled) {
@@ -111,7 +113,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!msalInstance) return;
     const account = msalInstance.getAllAccounts()[0];
     setUser(null);
-    await msalInstance.logoutPopup({ account }).catch(() => {});
+    await msalInstance.logoutPopup({ account }).catch((err) => {
+      console.warn('[Auth] logoutPopup error:', err);
+    });
   }, []);
 
   return (

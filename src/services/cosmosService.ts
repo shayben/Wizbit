@@ -77,7 +77,7 @@ async function buildHeaders(
   return {
     Authorization: auth,
     'x-ms-date': date,
-    'x-ms-version': '2018-12-31',
+    'x-ms-version': '2023-11-15',
     'Content-Type': 'application/json',
     Accept: 'application/json',
     ...extraHeaders,

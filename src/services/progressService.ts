@@ -195,8 +195,6 @@ export async function updatePracticeWords(
   uid: string,
   wordsNeedPractice: string[],
   wordsNowCorrect: string[],
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _sessionId: string,
 ): Promise<number> {
   let clearedCount = 0;
 
@@ -299,17 +297,15 @@ export async function saveTrophies(uid: string, trophyIds: string[]): Promise<vo
 export async function loadSessions(uid: string): Promise<SessionRecord[]> {
   if (isCosmosConfigured) {
     try {
-      const docs = await queryDocuments<SessionDoc>(
-        'SELECT * FROM c WHERE c.uid = @uid AND c.type = "session" ORDER BY c.date DESC OFFSET 0 LIMIT 200',
+      // Project only SessionRecord fields — avoids returning uid/type Cosmos metadata
+      const records = await queryDocuments<SessionRecord>(
+        `SELECT c.id, c.date, c.title, c.score, c.stars, c.accuracy,
+                c.wordCount, c.hardWordCount, c.hardWordCorrect, c.wordsNeedPractice
+         FROM c WHERE c.uid = @uid AND c.type = "session"
+         ORDER BY c.date DESC OFFSET 0 LIMIT 200`,
         [{ name: '@uid', value: uid }],
         uid,
       );
-      // Strip Cosmos-only fields before returning
-      const records = docs.map((d) => {
-        const { uid: _uid, type: _type, ...rest } = d;
-        void _uid; void _type;
-        return rest as SessionRecord;
-      });
       lsSet(LS_SESSIONS(uid), records);
       return records;
     } catch { /* fall through */ }
@@ -320,16 +316,13 @@ export async function loadSessions(uid: string): Promise<SessionRecord[]> {
 export async function loadPracticeWords(uid: string): Promise<PracticeWord[]> {
   if (isCosmosConfigured) {
     try {
-      const docs = await queryDocuments<PracticeWordDoc>(
-        'SELECT * FROM c WHERE c.uid = @uid AND c.type = "practiceWord" ORDER BY c.failCount DESC OFFSET 0 LIMIT 500',
+      const words = await queryDocuments<PracticeWord>(
+        `SELECT c.word, c.failCount, c.lastSeen
+         FROM c WHERE c.uid = @uid AND c.type = "practiceWord"
+         ORDER BY c.failCount DESC OFFSET 0 LIMIT 500`,
         [{ name: '@uid', value: uid }],
         uid,
       );
-      const words = docs.map((d) => {
-        const { uid: _uid, type: _type, id: _id, ...rest } = d;
-        void _uid; void _type; void _id;
-        return rest as PracticeWord;
-      });
       const stored: Record<string, PracticeWord> = {};
       words.forEach((w) => { stored[w.word] = w; });
       lsSet(LS_PRACTICE(uid), stored);
