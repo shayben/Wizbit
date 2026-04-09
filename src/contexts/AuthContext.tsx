@@ -16,17 +16,23 @@ import type { AccountInfo } from '@azure/msal-browser';
 import { msalInstance, isMsalConfigured, LOGIN_SCOPES } from '../services/msalService';
 import type { CurrentUser, AuthProvider as AuthProviderType } from '../types/auth';
 import { isGoogleConfigured } from '../services/googleAuthService';
-import { jwtDecode } from 'jwt-decode';
 
 const PROVIDER_KEY = 'wizbit:auth-provider';
-const GOOGLE_CRED_KEY = 'wizbit:google-credential';
+const GOOGLE_USER_KEY = 'wizbit:google-user';
+
+interface GoogleUserInfo {
+  sub: string;
+  name?: string;
+  email?: string;
+  picture?: string;
+}
 
 interface AuthContextValue {
   user: CurrentUser | null;
   loading: boolean;
   isConfigured: boolean;
   signInMicrosoft: () => Promise<void>;
-  signInGoogle: () => void;
+  signInGoogle: (accessToken: string) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -35,7 +41,7 @@ const AuthContext = createContext<AuthContextValue>({
   loading: false,
   isConfigured: false,
   signInMicrosoft: async () => {},
-  signInGoogle: () => {},
+  signInGoogle: async () => {},
   signOut: async () => {},
 });
 
@@ -49,26 +55,14 @@ function msalAccountToUser(account: AccountInfo, photoURL: string | null = null)
   };
 }
 
-interface GoogleJwtPayload {
-  sub: string;
-  name?: string;
-  email?: string;
-  picture?: string;
-}
-
-function googleCredentialToUser(credential: string): CurrentUser | null {
-  try {
-    const payload = jwtDecode<GoogleJwtPayload>(credential);
-    return {
-      uid: `google:${payload.sub}`,
-      displayName: payload.name ?? null,
-      email: payload.email ?? null,
-      photoURL: payload.picture ?? null,
-      provider: 'google',
-    };
-  } catch {
-    return null;
-  }
+function googleInfoToUser(info: GoogleUserInfo): CurrentUser {
+  return {
+    uid: `google:${info.sub}`,
+    displayName: info.name ?? null,
+    email: info.email ?? null,
+    photoURL: info.picture ?? null,
+    provider: 'google',
+  };
 }
 
 async function fetchMsGraphPhoto(accessToken: string): Promise<string | null> {
@@ -112,12 +106,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
 
     const restoreGoogle = () => {
-      const cred = localStorage.getItem(GOOGLE_CRED_KEY);
-      if (!cred) return false;
-      const u = googleCredentialToUser(cred);
-      if (!u) { localStorage.removeItem(GOOGLE_CRED_KEY); return false; }
-      if (!cancelled) setUser(u);
-      return true;
+      const raw = localStorage.getItem(GOOGLE_USER_KEY);
+      if (!raw) return false;
+      try {
+        const info = JSON.parse(raw) as GoogleUserInfo;
+        if (!info.sub) { localStorage.removeItem(GOOGLE_USER_KEY); return false; }
+        if (!cancelled) setUser(googleInfoToUser(info));
+        return true;
+      } catch {
+        localStorage.removeItem(GOOGLE_USER_KEY);
+        return false;
+      }
     };
 
     (async () => {
@@ -151,15 +150,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // ── Google sign-in (called from Google button callback) ──
-  const signInGoogle = useCallback((credential?: string) => {
-    if (!credential) return;
-    const u = googleCredentialToUser(credential);
-    if (u) {
-      setUser(u);
-      localStorage.setItem(PROVIDER_KEY, 'google');
-      localStorage.setItem(GOOGLE_CRED_KEY, credential);
-    }
+  // ── Google sign-in (receives access token from useGoogleLogin) ──
+  const signInGoogle = useCallback(async (accessToken: string) => {
+    const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) throw new Error('Failed to fetch Google user info');
+    const info = (await res.json()) as GoogleUserInfo;
+    const u = googleInfoToUser(info);
+    setUser(u);
+    localStorage.setItem(PROVIDER_KEY, 'google');
+    localStorage.setItem(GOOGLE_USER_KEY, JSON.stringify(info));
   }, []);
 
   // ── Sign out ──
@@ -171,13 +172,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const provider = user?.provider;
     setUser(null);
     localStorage.removeItem(PROVIDER_KEY);
-    localStorage.removeItem(GOOGLE_CRED_KEY);
+    localStorage.removeItem(GOOGLE_USER_KEY);
 
     if (provider === 'microsoft' && msalInstance) {
       const account = msalInstance.getAllAccounts()[0];
       await msalInstance.logoutPopup({ account }).catch(() => {});
     }
-    // Google: clearing stored credential is sufficient; no server-side logout needed
+    // Google: clearing stored user info is sufficient; no server-side logout needed
   }, [user]);
 
   return (
@@ -186,7 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       isConfigured: isMsalConfigured || isGoogleConfigured,
       signInMicrosoft,
-      signInGoogle: signInGoogle as () => void,
+      signInGoogle,
       signOut,
     }}>
       {children}
