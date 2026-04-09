@@ -1,7 +1,7 @@
 {
-  "name": "Reading Assistant",
-  "short_name": "ReadingAI",
-  "description": "Practice reading aloud with AI-powered pronunciation assessment",
+  "name": "Wizbit",
+  "short_name": "Wizbit",
+  "description": "Magical learning adventures — reading, stories, and more with AI",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#eef2ff",

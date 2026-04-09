@@ -30,7 +30,7 @@ const LoginScreen: React.FC = () => {
     <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white flex flex-col items-center justify-center gap-8 p-6">
       <div className="text-center">
         <p className="text-6xl mb-4">📖</p>
-        <h1 className="text-3xl md:text-4xl font-bold text-indigo-700 mb-2">Reading Assistant</h1>
+        <h1 className="text-3xl md:text-4xl font-bold text-indigo-700 mb-2">🧙 Wizbit</h1>
         <p className="text-gray-500 text-base md:text-lg">Sign in to track your reading progress</p>
       </div>
 

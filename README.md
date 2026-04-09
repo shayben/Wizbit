@@ -1,6 +1,6 @@
-# ReadingAssistant
+# Wizbit 🧙
 
-A mobile-friendly web app that uses your device camera and Azure AI to help readers practise reading aloud. It:
+A mobile-friendly web app that uses Azure AI to make learning magical. It:
 
 - 📷 **Captures** a printed reading assignment with your camera (or image upload)
 - 🔍 **Reads** the text using Azure Computer Vision OCR

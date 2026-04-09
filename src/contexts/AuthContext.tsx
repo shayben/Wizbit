@@ -18,8 +18,8 @@ import type { CurrentUser, AuthProvider as AuthProviderType } from '../types/aut
 import { isGoogleConfigured } from '../services/googleAuthService';
 import { jwtDecode } from 'jwt-decode';
 
-const PROVIDER_KEY = 'reading-assistant:auth-provider';
-const GOOGLE_CRED_KEY = 'reading-assistant:google-credential';
+const PROVIDER_KEY = 'wizbit:auth-provider';
+const GOOGLE_CRED_KEY = 'wizbit:google-credential';
 
 interface AuthContextValue {
   user: CurrentUser | null;

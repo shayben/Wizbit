@@ -159,7 +159,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white flex flex-col items-center gap-6 md:gap-8 p-6 pt-12 md:pt-16">
         <canvas ref={canvasRef} className="hidden" />
-        <h1 className="text-3xl md:text-4xl font-bold text-indigo-700">📖 Reading Assistant</h1>
+        <h1 className="text-3xl md:text-4xl font-bold text-indigo-700">🧙 Wizbit</h1>
 
         {/* User header (SSO) */}
         {user && (

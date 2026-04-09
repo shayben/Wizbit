@@ -31,7 +31,7 @@ const KeyMomentSchema = z.object({
   caption: z.string(),
 });
 
-const SYSTEM_PROMPT = `You are a reading assistant for children ages 6-12. Analyse the given text and identify 2-4 key moments where showing a visual image or playing relevant background music would make reading more engaging.
+const SYSTEM_PROMPT = `You are a learning assistant for children ages 6-12. Analyse the given text and identify 2-4 key moments where showing a visual image or playing relevant background music would make reading more engaging.
 
 For each moment return a JSON object with:
 - wordIndex: 0-based index of the trigger word in the words array

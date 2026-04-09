@@ -1,4 +1,4 @@
-# Copilot Instructions — ReadingAssistant
+# Copilot Instructions — Wizbit
 
 ## Build, Test & Lint
 

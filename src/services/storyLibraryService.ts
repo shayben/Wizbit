@@ -6,7 +6,7 @@
 
 import type { StoryContext } from './storyService';
 
-const STORAGE_KEY = 'reading-assistant:story-library';
+const STORAGE_KEY = 'wizbit:story-library';
 
 export interface SavedChapter {
   number: number;

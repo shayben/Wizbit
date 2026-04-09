@@ -3,7 +3,7 @@
  * to Azure Cosmos DB (when configured) with a localStorage cache/fallback.
  *
  * Cosmos DB container setup:
- *   Database:      reading-assistant  (or VITE_COSMOS_DATABASE)
+ *   Database:      wizbit  (or VITE_COSMOS_DATABASE)
  *   Container:     progress           (or VITE_COSMOS_CONTAINER)
  *   Partition key: /uid
  *

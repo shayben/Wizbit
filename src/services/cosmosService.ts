@@ -7,7 +7,7 @@
  * Required env vars:
  *   VITE_COSMOS_ENDPOINT  — e.g. https://<account>.documents.azure.com
  *   VITE_COSMOS_KEY       — Primary or secondary master key (base64)
- *   VITE_COSMOS_DATABASE  — Database name (default: reading-assistant)
+ *   VITE_COSMOS_DATABASE  — Database name (default: wizbit)
  *   VITE_COSMOS_CONTAINER — Container name (default: progress)
  *
  * Container setup:
@@ -17,7 +17,7 @@
 
 const ENDPOINT   = (import.meta.env.VITE_COSMOS_ENDPOINT as string | undefined)?.replace(/\/$/, '');
 const KEY_B64    = import.meta.env.VITE_COSMOS_KEY as string | undefined;
-const DATABASE   = (import.meta.env.VITE_COSMOS_DATABASE as string | undefined) ?? 'reading-assistant';
+const DATABASE   = (import.meta.env.VITE_COSMOS_DATABASE as string | undefined) ?? 'wizbit';
 const CONTAINER  = (import.meta.env.VITE_COSMOS_CONTAINER as string | undefined) ?? 'progress';
 
 export const isCosmosConfigured = Boolean(ENDPOINT && KEY_B64);
