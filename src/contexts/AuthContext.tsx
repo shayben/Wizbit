@@ -1,7 +1,7 @@
 /**
- * Auth context — wraps Microsoft MSAL (Entra ID) and exposes the current user
- * to the whole component tree.  When MSAL is not configured (client ID absent)
- * the context still works: auth methods are no-ops and `user` stays null.
+ * Auth context — supports Microsoft MSAL and Google sign-in.
+ * Persists the active provider in localStorage so returning users are
+ * automatically signed in without choosing a provider again.
  */
 
 import {
@@ -14,14 +14,19 @@ import {
 } from 'react';
 import type { AccountInfo } from '@azure/msal-browser';
 import { msalInstance, isMsalConfigured, LOGIN_SCOPES } from '../services/msalService';
-import type { CurrentUser } from '../types/auth';
+import type { CurrentUser, AuthProvider as AuthProviderType } from '../types/auth';
+import { isGoogleConfigured } from '../services/googleAuthService';
+import { jwtDecode } from 'jwt-decode';
+
+const PROVIDER_KEY = 'reading-assistant:auth-provider';
+const GOOGLE_CRED_KEY = 'reading-assistant:google-credential';
 
 interface AuthContextValue {
   user: CurrentUser | null;
-  /** True while the initial auth state is being resolved. */
   loading: boolean;
   isConfigured: boolean;
-  signIn: () => Promise<void>;
+  signInMicrosoft: () => Promise<void>;
+  signInGoogle: () => void;
   signOut: () => Promise<void>;
 }
 
@@ -29,20 +34,43 @@ const AuthContext = createContext<AuthContextValue>({
   user: null,
   loading: false,
   isConfigured: false,
-  signIn: async () => {},
+  signInMicrosoft: async () => {},
+  signInGoogle: () => {},
   signOut: async () => {},
 });
 
-function accountToUser(account: AccountInfo, photoURL: string | null = null): CurrentUser {
+function msalAccountToUser(account: AccountInfo, photoURL: string | null = null): CurrentUser {
   return {
     uid: account.homeAccountId,
     displayName: account.name ?? null,
     email: account.username ?? null,
     photoURL,
+    provider: 'microsoft',
   };
 }
 
-/** Attempt to fetch the user's Microsoft profile photo via MS Graph. */
+interface GoogleJwtPayload {
+  sub: string;
+  name?: string;
+  email?: string;
+  picture?: string;
+}
+
+function googleCredentialToUser(credential: string): CurrentUser | null {
+  try {
+    const payload = jwtDecode<GoogleJwtPayload>(credential);
+    return {
+      uid: `google:${payload.sub}`,
+      displayName: payload.name ?? null,
+      email: payload.email ?? null,
+      photoURL: payload.picture ?? null,
+      provider: 'google',
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function fetchMsGraphPhoto(accessToken: string): Promise<string | null> {
   try {
     const res = await fetch('https://graph.microsoft.com/v1.0/me/photo/$value', {
@@ -58,72 +86,109 @@ async function fetchMsGraphPhoto(accessToken: string): Promise<string | null> {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<CurrentUser | null>(null);
-  const [loading, setLoading] = useState(isMsalConfigured);
+  const [loading, setLoading] = useState(isMsalConfigured || isGoogleConfigured);
 
+  // ── Restore session on mount ──
   useEffect(() => {
-    if (!msalInstance) return;
-
     let cancelled = false;
+    const savedProvider = localStorage.getItem(PROVIDER_KEY) as AuthProviderType | null;
 
-    msalInstance.initialize().then(async () => {
-      if (cancelled) return;
+    const restoreMicrosoft = async () => {
+      if (!msalInstance) return false;
+      await msalInstance.initialize();
+      await msalInstance.handleRedirectPromise().catch(() => {});
+      const accounts = msalInstance.getAllAccounts();
+      if (accounts.length === 0) return false;
 
-      // Handle redirect response (if any)
-      await msalInstance!.handleRedirectPromise().catch((err) => {
-        console.warn('[Auth] handleRedirectPromise error:', err);
-      });
-
-      const accounts = msalInstance!.getAllAccounts();
-      if (accounts.length > 0 && !cancelled) {
-        const account = accounts[0];
-        try {
-          // Acquire token silently to get an access token for MS Graph
-          const result = await msalInstance!.acquireTokenSilent({
-            account,
-            scopes: LOGIN_SCOPES,
-          });
-          const photoURL = await fetchMsGraphPhoto(result.accessToken);
-          if (!cancelled) setUser(accountToUser(account, photoURL));
-        } catch {
-          // Token refresh failed — still show user without photo
-          if (!cancelled) setUser(accountToUser(account));
-        }
+      const account = accounts[0];
+      try {
+        const result = await msalInstance.acquireTokenSilent({ account, scopes: LOGIN_SCOPES });
+        const photoURL = await fetchMsGraphPhoto(result.accessToken);
+        if (!cancelled) setUser(msalAccountToUser(account, photoURL));
+      } catch {
+        if (!cancelled) setUser(msalAccountToUser(account));
       }
+      return true;
+    };
 
+    const restoreGoogle = () => {
+      const cred = localStorage.getItem(GOOGLE_CRED_KEY);
+      if (!cred) return false;
+      const u = googleCredentialToUser(cred);
+      if (!u) { localStorage.removeItem(GOOGLE_CRED_KEY); return false; }
+      if (!cancelled) setUser(u);
+      return true;
+    };
+
+    (async () => {
+      // Try restoring the provider the user last used
+      if (savedProvider === 'google') {
+        if (!restoreGoogle() && msalInstance) await restoreMicrosoft();
+      } else if (savedProvider === 'microsoft') {
+        if (!(await restoreMicrosoft())) restoreGoogle();
+      } else {
+        // No preference — try both
+        if (msalInstance && (await restoreMicrosoft())) { /* done */ }
+        else restoreGoogle();
+      }
       if (!cancelled) setLoading(false);
-    }).catch(() => {
-      if (!cancelled) setLoading(false);
-    });
+    })().catch(() => { if (!cancelled) setLoading(false); });
 
     return () => { cancelled = true; };
   }, []);
 
-  const signIn = useCallback(async () => {
+  // ── Microsoft sign-in ──
+  const signInMicrosoft = useCallback(async () => {
     if (!msalInstance) return;
     try {
       const result = await msalInstance.loginPopup({ scopes: LOGIN_SCOPES });
       const photoURL = await fetchMsGraphPhoto(result.accessToken);
-      setUser(accountToUser(result.account, photoURL));
+      const u = msalAccountToUser(result.account, photoURL);
+      setUser(u);
+      localStorage.setItem(PROVIDER_KEY, 'microsoft');
     } catch {
-      // User cancelled popup or other error — leave user as null
+      // User cancelled popup
     }
   }, []);
 
+  // ── Google sign-in (called from Google button callback) ──
+  const signInGoogle = useCallback((credential?: string) => {
+    if (!credential) return;
+    const u = googleCredentialToUser(credential);
+    if (u) {
+      setUser(u);
+      localStorage.setItem(PROVIDER_KEY, 'google');
+      localStorage.setItem(GOOGLE_CRED_KEY, credential);
+    }
+  }, []);
+
+  // ── Sign out ──
   const signOut = useCallback(async () => {
-    if (!msalInstance) return;
-    const account = msalInstance.getAllAccounts()[0];
-    // Revoke photo object URL to prevent memory leak
     if (user?.photoURL?.startsWith('blob:')) {
       URL.revokeObjectURL(user.photoURL);
     }
+
+    const provider = user?.provider;
     setUser(null);
-    await msalInstance.logoutPopup({ account }).catch((err) => {
-      console.warn('[Auth] logoutPopup error:', err);
-    });
+    localStorage.removeItem(PROVIDER_KEY);
+    localStorage.removeItem(GOOGLE_CRED_KEY);
+
+    if (provider === 'microsoft' && msalInstance) {
+      const account = msalInstance.getAllAccounts()[0];
+      await msalInstance.logoutPopup({ account }).catch(() => {});
+    }
+    // Google: clearing stored credential is sufficient; no server-side logout needed
   }, [user]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, isConfigured: isMsalConfigured, signIn, signOut }}>
+    <AuthContext.Provider value={{
+      user,
+      loading,
+      isConfigured: isMsalConfigured || isGoogleConfigured,
+      signInMicrosoft,
+      signInGoogle: signInGoogle as () => void,
+      signOut,
+    }}>
       {children}
     </AuthContext.Provider>
   );
