@@ -4,10 +4,10 @@
  */
 
 import React from 'react';
-import type { User } from 'firebase/auth';
+import type { CurrentUser } from '../types/auth';
 
 interface UserHeaderProps {
-  user: User;
+  user: CurrentUser;
   onOpenDashboard: () => void;
   onSignOut: () => void;
 }

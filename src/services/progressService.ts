@@ -1,28 +1,26 @@
 /**
  * Progress service — persists reading history, practice words, and trophies
- * to Firestore (when Firebase is configured) with a localStorage cache/fallback.
+ * to Azure Cosmos DB (when configured) with a localStorage cache/fallback.
  *
- * Firestore structure:
- *   users/{uid}/
- *     meta (document):
- *       displayName, sessionCount, sessionDates[], practiceClearedCount
- *     sessions/{sessionId} (subcollection documents):
- *       date, title, score, stars, accuracy, wordCount,
- *       hardWordCount, hardWordCorrect, wordsNeedPractice[]
- *     practiceWords/{word} (subcollection documents):
- *       word, failCount, lastSeen, sessionIds[]
- *     trophies/{trophyId} (subcollection documents):
- *       id, earnedAt
+ * Cosmos DB container setup:
+ *   Database:      reading-assistant  (or VITE_COSMOS_DATABASE)
+ *   Container:     progress           (or VITE_COSMOS_CONTAINER)
+ *   Partition key: /uid
+ *
+ * Document types stored in the single container:
+ *   type="meta"         id={uid}_meta
+ *   type="session"      id={uid}_{timestamp}
+ *   type="practiceWord" id={uid}_pw_{word}
+ *   type="trophy"       id={uid}_trophy_{trophyId}
  */
 
 import {
-  doc, getDoc, setDoc, updateDoc, deleteDoc,
-  collection, getDocs, query, limit, orderBy,
-  serverTimestamp,
-  increment, arrayUnion,
-  type DocumentData,
-} from 'firebase/firestore';
-import { db } from './firebaseService';
+  isCosmosConfigured,
+  upsertDocument,
+  readDocument,
+  deleteDocument,
+  queryDocuments,
+} from './cosmosService';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -61,13 +59,45 @@ export interface UserProgress {
 }
 
 // ---------------------------------------------------------------------------
+// Internal Cosmos document shapes
+// ---------------------------------------------------------------------------
+
+interface MetaDoc {
+  id: string;
+  uid: string;
+  type: 'meta';
+  sessionCount: number;
+  sessionDates: string[];
+  practiceClearedCount: number;
+}
+
+interface SessionDoc extends SessionRecord {
+  uid: string;
+  type: 'session';
+}
+
+interface PracticeWordDoc extends PracticeWord {
+  id: string;
+  uid: string;
+  type: 'practiceWord';
+}
+
+interface TrophyDoc {
+  id: string;
+  uid: string;
+  type: 'trophy';
+  trophyId: string;
+  earnedAt: string;
+}
+
+// ---------------------------------------------------------------------------
 // Local-storage keys (fallback / offline cache)
 // ---------------------------------------------------------------------------
 
-const LS_SESSIONS      = (uid: string) => `ra_sessions_${uid}`;
-const LS_PRACTICE      = (uid: string) => `ra_practice_${uid}`;
-const LS_TROPHIES      = (uid: string) => `ra_trophies_${uid}`;
-const LS_META          = (uid: string) => `ra_meta_${uid}`;
+const LS_SESSIONS = (uid: string) => `ra_sessions_${uid}`;
+const LS_PRACTICE = (uid: string) => `ra_practice_${uid}`;
+const LS_TROPHIES = (uid: string) => `ra_trophies_${uid}`;
+const LS_META     = (uid: string) => `ra_meta_${uid}`;
 
 function lsGet<T>(key: string): T | null {
   try {
@@ -77,7 +107,7 @@ function lsGet<T>(key: string): T | null {
 }
 
 function lsSet(key: string, value: unknown) {
-  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota exceeded etc. */ }
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* quota */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -91,6 +121,10 @@ function todayISO(): string {
 function sessionTitle(text: string): string {
   return text.replace(/\s+/g, ' ').trim().slice(0, 40);
 }
+
+function metaId(uid: string): string { return `${uid}_meta`; }
+function pwId(uid: string, word: string): string { return `${uid}_pw_${word}`; }
+function trophyId(uid: string, id: string): string { return `${uid}_trophy_${id}`; }
 
 // ---------------------------------------------------------------------------
 // Session saving
@@ -133,27 +167,24 @@ export async function saveSession(
   meta.sessionDates.push(todayISO());
   lsSet(LS_META(uid), meta);
 
-  // --- Firestore ---
-  if (!db) return;
+  // --- Cosmos DB ---
+  if (!isCosmosConfigured) return;
   try {
-    await setDoc(doc(db, 'users', uid, 'sessions', sessionId), {
-      ...record,
-      createdAt: serverTimestamp(),
-    });
-    await updateDoc(doc(db, 'users', uid, 'meta'), {
-      sessionCount: increment(1),
-      sessionDates: arrayUnion(todayISO()),
-      updatedAt: serverTimestamp(),
-    }).catch(async () => {
-      // meta doc might not exist yet
-      await setDoc(doc(db!, 'users', uid, 'meta'), {
-        sessionCount: 1,
-        sessionDates: [todayISO()],
-        practiceClearedCount: 0,
-        updatedAt: serverTimestamp(),
-      });
-    });
-  } catch { /* non-fatal — data already saved to localStorage */ }
+    const sessionDoc: SessionDoc = { ...record, uid, type: 'session' };
+    await upsertDocument(sessionDoc as unknown as Record<string, unknown>);
+
+    // Update or create meta document
+    const existingMeta = await readDocument<MetaDoc>(metaId(uid), uid);
+    const updatedMeta: MetaDoc = {
+      id: metaId(uid),
+      uid,
+      type: 'meta',
+      sessionCount: (existingMeta?.sessionCount ?? 0) + 1,
+      sessionDates: [...(existingMeta?.sessionDates ?? []), todayISO()],
+      practiceClearedCount: existingMeta?.practiceClearedCount ?? 0,
+    };
+    await upsertDocument(updatedMeta as unknown as Record<string, unknown>);
+  } catch { /* non-fatal */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -164,7 +195,8 @@ export async function updatePracticeWords(
   uid: string,
   wordsNeedPractice: string[],
   wordsNowCorrect: string[],
-  sessionId: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _sessionId: string,
 ): Promise<number> {
   let clearedCount = 0;
 
@@ -189,7 +221,6 @@ export async function updatePracticeWords(
 
   lsSet(LS_PRACTICE(uid), stored);
 
-  // Update cleared count in meta
   if (clearedCount > 0) {
     const meta = lsGet<{ sessionCount: number; sessionDates: string[]; practiceClearedCount: number }>(LS_META(uid)) ?? {
       sessionCount: 0, sessionDates: [], practiceClearedCount: 0,
@@ -198,36 +229,36 @@ export async function updatePracticeWords(
     lsSet(LS_META(uid), meta);
   }
 
-  // --- Firestore ---
-  if (!db) return clearedCount;
+  // --- Cosmos DB ---
+  if (!isCosmosConfigured) return clearedCount;
   try {
     const writes: Promise<unknown>[] = [];
+
     for (const word of wordsNeedPractice) {
-      writes.push(
-        updateDoc(doc(db, 'users', uid, 'practiceWords', word), {
-          failCount: increment(1),
-          lastSeen: new Date().toISOString(),
-          sessionIds: arrayUnion(sessionId),
-        }).catch(() =>
-          setDoc(doc(db!, 'users', uid, 'practiceWords', word), {
-            word,
-            failCount: 1,
-            lastSeen: new Date().toISOString(),
-            sessionIds: [sessionId],
-          }),
-        ),
-      );
+      const existing = await readDocument<PracticeWordDoc>(pwId(uid, word), uid).catch(() => null);
+      const doc: PracticeWordDoc = {
+        id: pwId(uid, word),
+        uid,
+        type: 'practiceWord',
+        word,
+        failCount: (existing?.failCount ?? 0) + 1,
+        lastSeen: new Date().toISOString(),
+      };
+      writes.push(upsertDocument(doc as unknown as Record<string, unknown>));
     }
+
     for (const word of wordsNowCorrect) {
-      writes.push(deleteDoc(doc(db, 'users', uid, 'practiceWords', word)));
+      writes.push(deleteDocument(pwId(uid, word), uid).catch(() => {}));
     }
+
     if (clearedCount > 0) {
-      writes.push(
-        updateDoc(doc(db, 'users', uid, 'meta'), {
-          practiceClearedCount: increment(clearedCount),
-        }).catch(() => Promise.resolve()),
-      );
+      const existingMeta = await readDocument<MetaDoc>(metaId(uid), uid).catch(() => null);
+      if (existingMeta) {
+        existingMeta.practiceClearedCount = (existingMeta.practiceClearedCount ?? 0) + clearedCount;
+        writes.push(upsertDocument(existingMeta as unknown as Record<string, unknown>));
+      }
     }
+
     await Promise.allSettled(writes);
   } catch { /* non-fatal */ }
 
@@ -245,19 +276,18 @@ export async function saveTrophies(uid: string, trophyIds: string[]): Promise<vo
   // --- localStorage ---
   const stored = lsGet<EarnedTrophy[]>(LS_TROPHIES(uid)) ?? [];
   for (const id of trophyIds) {
-    if (!stored.find((t) => t.id === id)) {
-      stored.push({ id, earnedAt: now });
-    }
+    if (!stored.find((t) => t.id === id)) stored.push({ id, earnedAt: now });
   }
   lsSet(LS_TROPHIES(uid), stored);
 
-  // --- Firestore ---
-  if (!db) return;
+  // --- Cosmos DB ---
+  if (!isCosmosConfigured) return;
   try {
     await Promise.allSettled(
-      trophyIds.map((id) =>
-        setDoc(doc(db!, 'users', uid, 'trophies', id), { id, earnedAt: now }),
-      ),
+      trophyIds.map((id) => {
+        const doc: TrophyDoc = { id: trophyId(uid, id), uid, type: 'trophy', trophyId: id, earnedAt: now };
+        return upsertDocument(doc as unknown as Record<string, unknown>);
+      }),
     );
   } catch { /* non-fatal */ }
 }
@@ -267,25 +297,39 @@ export async function saveTrophies(uid: string, trophyIds: string[]): Promise<vo
 // ---------------------------------------------------------------------------
 
 export async function loadSessions(uid: string): Promise<SessionRecord[]> {
-  // Try Firestore first
-  if (db) {
+  if (isCosmosConfigured) {
     try {
-      const q = query(collection(db, 'users', uid, 'sessions'), orderBy('date', 'desc'), limit(200));
-      const snap = await getDocs(q);
-      const records = snap.docs.map((d) => d.data() as SessionRecord);
+      const docs = await queryDocuments<SessionDoc>(
+        'SELECT * FROM c WHERE c.uid = @uid AND c.type = "session" ORDER BY c.date DESC OFFSET 0 LIMIT 200',
+        [{ name: '@uid', value: uid }],
+        uid,
+      );
+      // Strip Cosmos-only fields before returning
+      const records = docs.map((d) => {
+        const { uid: _uid, type: _type, ...rest } = d;
+        void _uid; void _type;
+        return rest as SessionRecord;
+      });
       lsSet(LS_SESSIONS(uid), records);
       return records;
-    } catch { /* fall through to localStorage */ }
+    } catch { /* fall through */ }
   }
   return lsGet<SessionRecord[]>(LS_SESSIONS(uid)) ?? [];
 }
 
 export async function loadPracticeWords(uid: string): Promise<PracticeWord[]> {
-  if (db) {
+  if (isCosmosConfigured) {
     try {
-      const q = query(collection(db, 'users', uid, 'practiceWords'), orderBy('failCount', 'desc'), limit(500));
-      const snap = await getDocs(q);
-      const words = snap.docs.map((d) => d.data() as PracticeWord);
+      const docs = await queryDocuments<PracticeWordDoc>(
+        'SELECT * FROM c WHERE c.uid = @uid AND c.type = "practiceWord" ORDER BY c.failCount DESC OFFSET 0 LIMIT 500',
+        [{ name: '@uid', value: uid }],
+        uid,
+      );
+      const words = docs.map((d) => {
+        const { uid: _uid, type: _type, id: _id, ...rest } = d;
+        void _uid; void _type; void _id;
+        return rest as PracticeWord;
+      });
       const stored: Record<string, PracticeWord> = {};
       words.forEach((w) => { stored[w.word] = w; });
       lsSet(LS_PRACTICE(uid), stored);
@@ -297,10 +341,14 @@ export async function loadPracticeWords(uid: string): Promise<PracticeWord[]> {
 }
 
 export async function loadTrophies(uid: string): Promise<EarnedTrophy[]> {
-  if (db) {
+  if (isCosmosConfigured) {
     try {
-      const snap = await getDocs(collection(db, 'users', uid, 'trophies'));
-      const trophies = snap.docs.map((d) => d.data() as EarnedTrophy);
+      const docs = await queryDocuments<TrophyDoc>(
+        'SELECT * FROM c WHERE c.uid = @uid AND c.type = "trophy"',
+        [{ name: '@uid', value: uid }],
+        uid,
+      );
+      const trophies = docs.map((d) => ({ id: d.trophyId, earnedAt: d.earnedAt }));
       lsSet(LS_TROPHIES(uid), trophies);
       return trophies;
     } catch { /* fall through */ }
@@ -309,30 +357,24 @@ export async function loadTrophies(uid: string): Promise<EarnedTrophy[]> {
 }
 
 export async function loadUserProgress(uid: string): Promise<UserProgress> {
-  // Try Firestore
-  if (db) {
+  if (isCosmosConfigured) {
     try {
-      const metaSnap = await getDoc(doc(db, 'users', uid, 'meta'));
-      if (metaSnap.exists()) {
-        const data = metaSnap.data() as DocumentData;
+      const metaDoc = await readDocument<MetaDoc>(metaId(uid), uid);
+      if (metaDoc) {
         const sessions = await loadSessions(uid);
         return {
-          sessionCount: (data.sessionCount as number) ?? 0,
-          sessionDates: (data.sessionDates as string[]) ?? [],
-          practiceClearedCount: (data.practiceClearedCount as number) ?? 0,
+          sessionCount: metaDoc.sessionCount ?? 0,
+          sessionDates: metaDoc.sessionDates ?? [],
+          practiceClearedCount: metaDoc.practiceClearedCount ?? 0,
           latestSession: sessions[0] ?? null,
         };
       }
     } catch { /* fall through */ }
   }
 
-  // localStorage fallback
   const meta = lsGet<{ sessionCount: number; sessionDates: string[]; practiceClearedCount: number }>(LS_META(uid)) ?? {
     sessionCount: 0, sessionDates: [], practiceClearedCount: 0,
   };
   const sessions = lsGet<SessionRecord[]>(LS_SESSIONS(uid)) ?? [];
-  return {
-    ...meta,
-    latestSession: sessions[0] ?? null,
-  };
+  return { ...meta, latestSession: sessions[0] ?? null };
 }

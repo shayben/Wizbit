@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import type { User } from 'firebase/auth';
+import type { CurrentUser } from '../types/auth';
 import {
   loadSessions,
   loadPracticeWords,
@@ -16,7 +16,7 @@ import {
 import { ALL_TROPHIES } from '../services/trophyService';
 
 interface ProgressDashboardProps {
-  user: User;
+  user: CurrentUser;
   onClose: () => void;
 }
 
