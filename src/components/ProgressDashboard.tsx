@@ -91,15 +91,16 @@ const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) 
     setLoading(true);
     setLoadError(null);
     try {
-      const [s, p, t] = await Promise.all([
+      const [s, p, t, stickers] = await Promise.all([
         loadSessions(user.uid),
         loadPracticeWords(user.uid),
         loadTrophies(user.uid),
+        loadCollectedStickers(user.uid),
       ]);
       setSessions(s);
       setPracticeWords(p);
       setEarnedTrophies(t);
-      setCollectedStickers(loadCollectedStickers());
+      setCollectedStickers(stickers);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load progress data');
     } finally {

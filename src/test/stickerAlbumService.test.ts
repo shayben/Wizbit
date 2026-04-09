@@ -96,11 +96,11 @@ describe('collectSticker', () => {
 });
 
 describe('loadCollectedStickers', () => {
-  it('returns empty array when no stickers', () => {
-    expect(loadCollectedStickers()).toEqual([]);
+  it('returns empty array when no stickers', async () => {
+    expect(await loadCollectedStickers()).toEqual([]);
   });
 
-  it('returns stickers sorted newest first', () => {
+  it('returns stickers sorted newest first', async () => {
     // Insert two stickers with controlled timestamps
     const raw = [
       { id: 's1', label: 'Old', stickerEmoji: '🧓', stickerSource: 'emoji', caption: 'old', collectedAt: '2024-01-01T00:00:00Z' },
@@ -108,14 +108,14 @@ describe('loadCollectedStickers', () => {
     ];
     localStorage.setItem(STORAGE_KEY, JSON.stringify(raw));
 
-    const loaded = loadCollectedStickers();
+    const loaded = await loadCollectedStickers();
     expect(loaded[0].label).toBe('New');
     expect(loaded[1].label).toBe('Old');
   });
 
-  it('handles corrupted localStorage gracefully', () => {
+  it('handles corrupted localStorage gracefully', async () => {
     localStorage.setItem(STORAGE_KEY, 'not json');
-    expect(loadCollectedStickers()).toEqual([]);
+    expect(await loadCollectedStickers()).toEqual([]);
   });
 });
 

@@ -143,8 +143,8 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({
       stickerSource: moment.stickerSource,
       caption: moment.caption,
       storyTitle,
-    });
-  }, [storyTitle]);
+    }, user?.uid);
+  }, [storyTitle, user?.uid]);
 
   // Manage ambient soundscape lifecycle
   useEffect(() => {
