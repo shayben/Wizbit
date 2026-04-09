@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { splitSyllables } from '../services/syllableService';
-import { translateToHebrew } from '../services/translationService';
+import { translateWordInContext, translateToHebrew } from '../services/translationService';
 import { speakWord } from '../services/speechService';
 import type { WordTiming } from './ReadingSession';
 
 interface WordPopupProps {
   word: string;
+  /** Surrounding text used to contextualise the Hebrew translation. */
+  sentence?: string;
   recordingBlob: Blob | null;
   timing?: WordTiming;
   onClose: () => void;
@@ -55,7 +57,7 @@ function scoreEmoji(score: number): string {
   return '❌';
 }
 
-const WordPopup: React.FC<WordPopupProps> = ({ word, recordingBlob, timing, onClose }) => {
+const WordPopup: React.FC<WordPopupProps> = ({ word, sentence, recordingBlob, timing, onClose }) => {
   const cleanWord = word.replace(/[^a-zA-Z']/g, '');
   const syllables = splitSyllables(cleanWord);
   const [hebrew, setHebrew] = useState<string | null>(null);
@@ -73,7 +75,11 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, recordingBlob, timing, onCl
 
   useEffect(() => {
     let cancelled = false;
-    translateToHebrew(cleanWord)
+    const promise = sentence
+      ? translateWordInContext(word, sentence)
+      : translateToHebrew(cleanWord);
+
+    promise
       .then((r) => {
         if (!cancelled) setHebrew(r.hebrew);
       })
@@ -84,7 +90,7 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, recordingBlob, timing, onCl
         if (!cancelled) setTranslating(false);
       });
     return () => { cancelled = true; };
-  }, [cleanWord]);
+  }, [cleanWord, word, sentence]);
 
   useEffect(() => {
     return () => {

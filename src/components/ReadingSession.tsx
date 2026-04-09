@@ -264,6 +264,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({ text, onReset }) => {
       {selectedWord && (
         <WordPopup
           word={selectedWord}
+          sentence={text}
           recordingBlob={recordingBlob}
           timing={selectedTiming}
           onClose={() => setSelectedWordIndex(null)}
