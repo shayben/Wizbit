@@ -62,6 +62,8 @@ export interface AssessmentResult {
 type WordCallback = (word: WordResult) => void;
 type DoneCallback = (result: AssessmentResult) => void;
 type ErrorCallback = (error: string) => void;
+/** Called with the number of words recognised so far (absolute index from start of text). */
+export type RecognizingCallback = (interimWordCount: number) => void;
 
 function getSpeechConfig(): SpeechSDK.SpeechConfig {
   if (!SPEECH_KEY || !SPEECH_REGION) {
@@ -88,6 +90,7 @@ export function startPronunciationAssessment(
   onDone: DoneCallback,
   onError: ErrorCallback,
   locale: string = DEFAULT_LOCALE,
+  onRecognizing?: RecognizingCallback,
 ): () => void {
   const speechConfig = getSpeechConfig();
   speechConfig.speechRecognitionLanguage = locale;
@@ -154,6 +157,17 @@ export function startPronunciationAssessment(
     }
   };
 
+  // Interim results — report how many words have been recognised so far
+  if (onRecognizing) {
+    recognizer.recognizing = (_sender, event) => {
+      if (event.result.reason === SpeechSDK.ResultReason.RecognizingSpeech) {
+        const text = event.result.text ?? '';
+        const wordCount = (text.match(/\S+/g) ?? []).length;
+        if (wordCount > 0) onRecognizing(wordCount);
+      }
+    };
+  }
+
   recognizer.sessionStopped = () => {
     const avgFluency =
       fluencyScores.length > 0
@@ -208,10 +222,12 @@ export function startWindowedPronunciationAssessment(
   onAllDone: DoneCallback,
   onError: ErrorCallback,
   locale: string = DEFAULT_LOCALE,
+  onRecognizing?: RecognizingCallback,
 ): () => void {
   let groupIdx = 0;
   let currentStop: (() => void) | null = null;
   let stopped = false;
+  let stopping = false;
   let doneReported = false;
   const fluencyAll: number[] = [];
   const t0 = Date.now();
@@ -244,8 +260,14 @@ export function startWindowedPronunciationAssessment(
     let advancing = false;
     const elapsed = (Date.now() - t0) / 1000;
 
+    // Compute how many words precede this window (absolute offset)
+    let windowWordOffset = 0;
+    for (let i = 0; i < groupIdx; i++) windowWordOffset += wordGroups[i].length;
+
     const onWindowWord: WordCallback = (result) => {
       if (result.errorType === 'Insertion' || advancing || stopped) return;
+      // While stopping, skip false omissions for words the child hasn't reached
+      if (stopping && result.errorType === 'Omission') return;
 
       onWord({ ...result, offsetSec: result.offsetSec + elapsed });
       processed++;
@@ -264,18 +286,25 @@ export function startWindowedPronunciationAssessment(
       reportDone();
     };
 
+    // Thread recognizing callback with absolute offset
+    const onWindowRecognizing: RecognizingCallback | undefined = onRecognizing
+      ? (interimCount) => onRecognizing(windowWordOffset + interimCount)
+      : undefined;
+
     currentStop = startPronunciationAssessment(
       windowText,
       onWindowWord,
       onWindowDone,
       (err) => { if (!stopped) onError(err); },
       locale,
+      onWindowRecognizing,
     );
   }
 
   startNextWindow();
 
   return () => {
+    stopping = true;
     stopped = true;
     currentStop?.();
   };

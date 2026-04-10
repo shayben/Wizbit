@@ -65,7 +65,7 @@
 }
 
 .animate-next-word {
-  animation: next-word-pulse 1.8s ease-in-out infinite;
+  animation: next-word-pulse 1.0s ease-in-out infinite;
 }
 
 .overscroll-contain {

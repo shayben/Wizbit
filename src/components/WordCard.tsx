@@ -9,6 +9,8 @@ interface WordCardProps {
   status: WordStatus;
   /** True when this is the next word the child should read. */
   isNext?: boolean;
+  /** True when this word is in the zone currently being read (between scored and spoken cursor). */
+  isBeingRead?: boolean;
   /** True when this word triggers an immersive moment. */
   hasMoment?: boolean;
   /** Accuracy score 0–100, displayed as a tooltip. */
@@ -24,7 +26,7 @@ const statusClasses: Record<WordStatus, string> = {
   skipped: 'text-yellow-600 bg-yellow-50 rounded',
 };
 
-const WordCard: React.FC<WordCardProps> = ({ word, index, status, isNext, hasMoment, score, onClick }) => {
+const WordCard: React.FC<WordCardProps> = ({ word, index, status, isNext, isBeingRead, hasMoment, score, onClick }) => {
   return (
     <button
       type="button"
@@ -36,6 +38,7 @@ const WordCard: React.FC<WordCardProps> = ({ word, index, status, isNext, hasMom
         hover:bg-indigo-50 hover:rounded px-0.5
         border-none font-inherit p-0
         ${isNext ? 'animate-next-word rounded px-1 font-semibold underline decoration-2 decoration-indigo-400' : ''}
+        ${isBeingRead && !isNext ? 'bg-indigo-50/60 rounded px-0.5' : ''}
         ${hasMoment ? 'border-b-2 border-dashed border-purple-300' : ''}
         ${statusClasses[status]}
       `}

@@ -94,7 +94,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({
 
   const {
     statuses, scores, wordTimings, listening, paused, sessionDone, error,
-    fluencyScore, nextWordIndex, startListening: startAssessment,
+    fluencyScore, nextWordIndex, spokenCursor, startListening: startAssessment,
     pauseListening: pauseAssessment, resumeListening: resumeAssessment,
     stopListening: stopAssessment, updateWordResult,
   } = useAssessment({
@@ -390,6 +390,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({
                 index={i}
                 status={statuses[i] ?? 'pending'}
                 isNext={listening && i === nextWordIndex}
+                isBeingRead={listening && !paused && i >= nextWordIndex && i < spokenCursor && statuses[i] === undefined}
                 hasMoment={momentIndices.has(i)}
                 score={scores[i]}
                 onClick={handleWordClick}

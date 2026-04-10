@@ -6,7 +6,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import type { WordStatus } from '../types/word';
 import { startWindowedPronunciationAssessment } from '../services/speechService';
-import type { WordResult, AssessmentResult } from '../services/speechService';
+import type { WordResult, AssessmentResult, RecognizingCallback } from '../services/speechService';
 
 export interface WordTiming {
   offsetSec: number;
@@ -31,8 +31,11 @@ export function useAssessment({ words, wordGroups, onSessionDone }: UseAssessmen
   const [error, setError] = useState<string | null>(null);
   const [fluencyScore, setFluencyScore] = useState<number | undefined>(undefined);
   const [nextWordIndex, setNextWordIndex] = useState(0);
+  /** Approximate spoken position from interim (recognizing) events. */
+  const [spokenCursor, setSpokenCursor] = useState(0);
 
   const nextWordRef = useRef(0);
+  const spokenCursorRef = useRef(0);
   const stopRef = useRef<(() => void) | null>(null);
   const pausingRef = useRef(false);
 
@@ -82,6 +85,14 @@ export function useAssessment({ words, wordGroups, onSessionDone }: UseAssessmen
     setListening(false);
   }, []);
 
+  const handleRecognizing: RecognizingCallback = useCallback((interimWordCount: number) => {
+    const next = Math.max(spokenCursorRef.current, interimWordCount);
+    if (next !== spokenCursorRef.current) {
+      spokenCursorRef.current = next;
+      setSpokenCursor(next);
+    }
+  }, []);
+
   const startListening = useCallback(() => {
     setError(null);
     setSessionDone(false);
@@ -92,6 +103,8 @@ export function useAssessment({ words, wordGroups, onSessionDone }: UseAssessmen
     setWordTimings({});
     nextWordRef.current = 0;
     setNextWordIndex(0);
+    spokenCursorRef.current = 0;
+    setSpokenCursor(0);
 
     try {
       const stop = startWindowedPronunciationAssessment(
@@ -99,13 +112,15 @@ export function useAssessment({ words, wordGroups, onSessionDone }: UseAssessmen
         handleWordResult,
         handleDone,
         handleError,
+        undefined,
+        handleRecognizing,
       );
       stopRef.current = stop;
       setListening(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [wordGroups, handleWordResult, handleDone, handleError]);
+  }, [wordGroups, handleWordResult, handleDone, handleError, handleRecognizing]);
 
   const pauseListening = useCallback(() => {
     pausingRef.current = true;
@@ -115,13 +130,20 @@ export function useAssessment({ words, wordGroups, onSessionDone }: UseAssessmen
   }, []);
 
   const resumeListening = useCallback(() => {
-    const currentIdx = nextWordRef.current;
+    // Use the furthest known position — the spoken cursor may be ahead of scored words
+    const currentIdx = Math.max(nextWordRef.current, spokenCursorRef.current);
     if (currentIdx >= words.length) {
       setPaused(false);
       setSessionDone(true);
       onSessionDone?.();
       return;
     }
+
+    // Sync refs/state to the resume position
+    nextWordRef.current = currentIdx;
+    setNextWordIndex(currentIdx);
+    spokenCursorRef.current = currentIdx;
+    setSpokenCursor(currentIdx);
 
     // Determine which group we're in and trim already-assessed words
     let wordOffset = 0;
@@ -147,12 +169,14 @@ export function useAssessment({ words, wordGroups, onSessionDone }: UseAssessmen
         handleWordResult,
         handleDone,
         handleError,
+        undefined,
+        handleRecognizing,
       );
       stopRef.current = stop;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [words.length, wordGroups, handleWordResult, handleDone, handleError, onSessionDone]);
+  }, [words.length, wordGroups, handleWordResult, handleDone, handleError, handleRecognizing, onSessionDone]);
 
   const stopListening = useCallback(() => {
     stopRef.current?.();
@@ -191,6 +215,7 @@ export function useAssessment({ words, wordGroups, onSessionDone }: UseAssessmen
     error,
     fluencyScore,
     nextWordIndex,
+    spokenCursor,
     startListening,
     pauseListening,
     resumeListening,
