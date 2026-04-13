@@ -6,6 +6,7 @@ import UserHeader from './components/UserHeader';
 import ProgressDashboard from './components/ProgressDashboard';
 import StoryLibrary from './components/StoryLibrary';
 import { recognizeText } from './services/ocrService';
+import { extractFromEbook } from './services/ebookService';
 import { readingLevels } from './data/demoParagraphs';
 import type { ReadingLevel, DemoParagraph } from './data/demoParagraphs';
 import type { SavedStory } from './services/storyLibraryService';
@@ -24,6 +25,7 @@ export default function App() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const ebookInputRef = useRef<HTMLInputElement>(null);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -101,6 +103,30 @@ export default function App() {
     goHome();
   }, [stopCamera, goHome]);
 
+  const handleEbookFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // Reset the input so the same file can be re-selected if needed
+    e.target.value = '';
+    if (!file) return;
+
+    setError(null);
+    navigate('ebook-processing');
+
+    try {
+      const text = await extractFromEbook(file);
+      if (text.trim()) {
+        setAssignmentText(text);
+        navigate('reading');
+      } else {
+        setError('No readable text found in this file — please try another.');
+        goHome();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      goHome();
+    }
+  }, [navigate, goHome]);
+
   const handleDemoLevel = useCallback((level: ReadingLevel) => {
     setDemoLevel(level);
     navigate('demo-pick');
@@ -159,6 +185,14 @@ export default function App() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white flex flex-col items-center gap-6 md:gap-8 p-6 pt-12 md:pt-16">
         <canvas ref={canvasRef} className="hidden" />
+        {/* Hidden file input for ebook uploads */}
+        <input
+          ref={ebookInputRef}
+          type="file"
+          accept=".pdf,.epub"
+          className="hidden"
+          onChange={handleEbookFile}
+        />
         <h1 className="text-3xl md:text-4xl font-bold text-indigo-700">🧙 Wizbit</h1>
 
         {/* User header (SSO) */}
@@ -197,6 +231,20 @@ export default function App() {
           </span>
         </button>
         <p className="text-gray-400 text-sm md:text-base">Tap to scan your reading</p>
+
+        {/* Ebook upload button */}
+        <button
+          type="button"
+          onClick={() => ebookInputRef.current?.click()}
+          className="w-full max-w-xs md:max-w-md py-3 md:py-4 rounded-2xl bg-teal-50 border border-teal-200
+                     text-teal-700 font-semibold text-base md:text-lg flex items-center justify-center gap-2
+                     active:bg-teal-100 transition-colors"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5 md:w-6 md:h-6 shrink-0">
+            <path d="M11.25 4.533A9.707 9.707 0 006 3a9.735 9.735 0 00-3.25.555.75.75 0 00-.5.707v14.25a.75.75 0 001 .707A8.237 8.237 0 016 18.75c1.995 0 3.823.707 5.25 1.886V4.533zM12.75 20.636A8.214 8.214 0 0118 18.75c.966 0 1.89.166 2.75.47a.75.75 0 001-.708V4.262a.75.75 0 00-.5-.707A9.735 9.735 0 0018 3a9.707 9.707 0 00-5.25 1.533v16.103z" />
+          </svg>
+          Load Ebook (PDF or EPUB)
+        </button>
 
         {/* Divider */}
         <div className="flex items-center gap-3 w-full max-w-xs md:max-w-md">
@@ -343,6 +391,16 @@ export default function App() {
       <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white flex flex-col items-center justify-center gap-4">
         <div className="w-14 h-14 md:w-18 md:h-18 border-4 border-indigo-400 border-t-transparent rounded-full animate-spin" />
         <p className="text-indigo-600 font-medium text-lg md:text-xl">Reading your text…</p>
+      </div>
+    );
+  }
+
+  // ── Ebook processing: spinner while ebook is parsed ──
+  if (step === 'ebook-processing') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white flex flex-col items-center justify-center gap-4">
+        <div className="w-14 h-14 md:w-18 md:h-18 border-4 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+        <p className="text-indigo-600 font-medium text-lg md:text-xl">Loading your ebook…</p>
       </div>
     );
   }
