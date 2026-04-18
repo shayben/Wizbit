@@ -220,7 +220,7 @@ export default function App() {
           <p className="text-red-600 text-sm text-center bg-red-50 rounded-xl p-3 max-w-xs md:max-w-md">{error}</p>
         )}
 
-        <div className="flex items-end justify-center gap-6 md:gap-10">
+        <div className="flex items-end justify-center gap-4 md:gap-8">
           <div className="flex flex-col items-center gap-2">
             <button
               type="button"
@@ -248,6 +248,32 @@ export default function App() {
             <p className="text-gray-400 text-sm md:text-base">Tap to scan</p>
           </div>
 
+          {/* Upload PDF/EPUB */}
+          <div className="flex flex-col items-center gap-2">
+            <button
+              type="button"
+              onClick={() => ebookInputRef.current?.click()}
+              aria-label="Upload PDF or EPUB"
+              className="group w-28 h-28 md:w-36 md:h-36 rounded-full
+                         bg-gradient-to-b from-emerald-400 via-emerald-600 to-emerald-700
+                         flex items-center justify-center
+                         shadow-[0_6px_20px_rgba(5,150,105,0.45),inset_0_2px_4px_rgba(255,255,255,0.25),inset_0_-2px_4px_rgba(0,0,0,0.2)]
+                         active:shadow-[0_2px_8px_rgba(5,150,105,0.3),inset_0_-1px_2px_rgba(255,255,255,0.15),inset_0_2px_6px_rgba(0,0,0,0.25)]
+                         active:translate-y-0.5 active:scale-[0.97]
+                         transition-all duration-100 ease-out
+                         border border-emerald-500/30"
+            >
+              <span className="flex items-center justify-center
+                               drop-shadow-[0_2px_2px_rgba(0,0,0,0.2)]
+                               group-active:scale-90 transition-transform duration-100">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-12 h-12 md:w-14 md:h-14">
+                  <path d="M11.25 4.533A9.707 9.707 0 006 3a9.735 9.735 0 00-3.25.555.75.75 0 00-.5.707v14.25a.75.75 0 001 .707A8.237 8.237 0 016 18.75c1.995 0 3.823.707 5.25 1.886V4.533zM12.75 20.636A8.214 8.214 0 0118 18.75c.966 0 1.89.166 2.75.47a.75.75 0 001-.708V4.262a.75.75 0 00-.5-.707A9.735 9.735 0 0018 3a9.707 9.707 0 00-5.25 1.533v16.103z" />
+                </svg>
+              </span>
+            </button>
+            <p className="text-gray-400 text-sm md:text-base">Upload book</p>
+          </div>
+
           {/* Voice helper: spell or translate any word */}
           <AskHelper
             uid={user?.uid}
@@ -255,17 +281,6 @@ export default function App() {
             onAccountLanguageChange={setAccountLanguageState}
           />
         </div>
-
-        {/* Ebook upload button */}
-        <button
-          type="button"
-          onClick={() => ebookInputRef.current?.click()}
-          className="w-full max-w-xs md:max-w-md py-3 md:py-4 rounded-2xl bg-indigo-50 border border-indigo-100
-                     text-indigo-700 font-semibold text-base md:text-lg
-                     active:bg-indigo-100 transition-colors"
-        >
-          📖 Upload PDF or EPUB
-        </button>
 
         {/* Divider */}
         <div className="flex items-center gap-3 w-full max-w-xs md:max-w-md">
