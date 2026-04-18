@@ -220,29 +220,41 @@ export default function App() {
           <p className="text-red-600 text-sm text-center bg-red-50 rounded-xl p-3 max-w-xs md:max-w-md">{error}</p>
         )}
 
-        <button
-          type="button"
-          onClick={openCamera}
-          className="group w-28 h-28 md:w-36 md:h-36 rounded-full
-                     bg-gradient-to-b from-indigo-400 via-indigo-600 to-indigo-700
-                     flex items-center justify-center
-                     shadow-[0_6px_20px_rgba(79,70,229,0.45),inset_0_2px_4px_rgba(255,255,255,0.25),inset_0_-2px_4px_rgba(0,0,0,0.2)]
-                     active:shadow-[0_2px_8px_rgba(79,70,229,0.3),inset_0_-1px_2px_rgba(255,255,255,0.15),inset_0_2px_6px_rgba(0,0,0,0.25)]
-                     active:translate-y-0.5 active:scale-[0.97]
-                     transition-all duration-100 ease-out
-                     border border-indigo-500/30"
-        >
-          <span className="text-5xl md:text-6xl flex items-center justify-center
-                           drop-shadow-[0_2px_2px_rgba(0,0,0,0.2)]
-                           group-active:scale-90 transition-transform duration-100
-                           -mt-0.5">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-12 h-12 md:w-14 md:h-14">
-              <path d="M12 9a3.75 3.75 0 100 7.5A3.75 3.75 0 0012 9z" />
-              <path fillRule="evenodd" d="M9.344 3.071a49.52 49.52 0 015.312 0c.967.052 1.83.585 2.332 1.39l.821 1.317c.24.383.645.643 1.11.71.386.054.77.113 1.152.177 1.432.239 2.429 1.493 2.429 2.909V18a3 3 0 01-3 3H4.5a3 3 0 01-3-3V9.574c0-1.416.997-2.67 2.429-2.909.382-.064.766-.123 1.151-.178a1.56 1.56 0 001.11-.71l.822-1.315a2.942 2.942 0 012.332-1.39zM12 10.5a2.25 2.25 0 100 4.5 2.25 2.25 0 000-4.5z" clipRule="evenodd" />
-            </svg>
-          </span>
-        </button>
-        <p className="text-gray-400 text-sm md:text-base">Tap to scan your reading</p>
+        <div className="flex items-end justify-center gap-6 md:gap-10">
+          <div className="flex flex-col items-center gap-2">
+            <button
+              type="button"
+              onClick={openCamera}
+              aria-label="Scan reading with camera"
+              className="group w-28 h-28 md:w-36 md:h-36 rounded-full
+                         bg-gradient-to-b from-indigo-400 via-indigo-600 to-indigo-700
+                         flex items-center justify-center
+                         shadow-[0_6px_20px_rgba(79,70,229,0.45),inset_0_2px_4px_rgba(255,255,255,0.25),inset_0_-2px_4px_rgba(0,0,0,0.2)]
+                         active:shadow-[0_2px_8px_rgba(79,70,229,0.3),inset_0_-1px_2px_rgba(255,255,255,0.15),inset_0_2px_6px_rgba(0,0,0,0.25)]
+                         active:translate-y-0.5 active:scale-[0.97]
+                         transition-all duration-100 ease-out
+                         border border-indigo-500/30"
+            >
+              <span className="text-5xl md:text-6xl flex items-center justify-center
+                               drop-shadow-[0_2px_2px_rgba(0,0,0,0.2)]
+                               group-active:scale-90 transition-transform duration-100
+                               -mt-0.5">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" className="w-12 h-12 md:w-14 md:h-14">
+                  <path d="M12 9a3.75 3.75 0 100 7.5A3.75 3.75 0 0012 9z" />
+                  <path fillRule="evenodd" d="M9.344 3.071a49.52 49.52 0 015.312 0c.967.052 1.83.585 2.332 1.39l.821 1.317c.24.383.645.643 1.11.71.386.054.77.113 1.152.177 1.432.239 2.429 1.493 2.429 2.909V18a3 3 0 01-3 3H4.5a3 3 0 01-3-3V9.574c0-1.416.997-2.67 2.429-2.909.382-.064.766-.123 1.151-.178a1.56 1.56 0 001.11-.71l.822-1.315a2.942 2.942 0 012.332-1.39zM12 10.5a2.25 2.25 0 100 4.5 2.25 2.25 0 000-4.5z" clipRule="evenodd" />
+                </svg>
+              </span>
+            </button>
+            <p className="text-gray-400 text-sm md:text-base">Tap to scan</p>
+          </div>
+
+          {/* Voice helper: spell or translate any word */}
+          <AskHelper
+            uid={user?.uid}
+            accountLanguage={accountLanguage}
+            onAccountLanguageChange={setAccountLanguageState}
+          />
+        </div>
 
         {/* Ebook upload button */}
         <button
@@ -290,13 +302,6 @@ export default function App() {
         >
           📚 My Stories
         </button>
-
-        {/* Voice helper: spell or translate any word */}
-        <AskHelper
-          uid={user?.uid}
-          accountLanguage={accountLanguage}
-          onAccountLanguageChange={setAccountLanguageState}
-        />
       </div>
     );
   }
