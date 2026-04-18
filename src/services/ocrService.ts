@@ -1,55 +1,41 @@
 /**
- * Azure Computer Vision OCR service.
- * Sends an image (base64 data URL or Blob) to the Azure Read API and
- * returns the recognised text as a single string.
+ * Azure Computer Vision OCR via the Wizbit backend proxy.
  *
- * An optional LLM postprocessing pass (GPT-4o-mini) cleans OCR noise
- * using layout context (position, size, confidence) from the vision API.
+ * Public surface (`recognizeText`) is unchanged. Internally we now POST a
+ * compressed image to `/api/ocr/recognize` instead of calling Azure directly.
+ * The backend forwards to Vision Read API and applies per-user rate limits.
+ *
+ * OCR cleanup (LLM postprocessing) goes through `/api/openai/chat` with
+ * purpose:'ocr-clean' (charged 0 — bundled with the OCR call).
  */
 
-const VISION_ENDPOINT = import.meta.env.VITE_AZURE_VISION_ENDPOINT as string;
-const VISION_KEY = import.meta.env.VITE_AZURE_VISION_KEY as string;
-
-const OPENAI_ENDPOINT = import.meta.env.VITE_AZURE_OPENAI_ENDPOINT as string;
-const OPENAI_KEY = import.meta.env.VITE_AZURE_OPENAI_KEY as string;
-const OPENAI_DEPLOYMENT = import.meta.env.VITE_AZURE_OPENAI_DEPLOYMENT as string;
-
-/** Max dimension (px) for the longest side before sending to Azure. */
-const MAX_IMAGE_DIMENSION = 2048;
-/** Target JPEG quality for recompression. */
-const JPEG_QUALITY = 0.85;
+import { apiPost, blobToBase64 } from './apiClient';
 
 export interface OcrResult {
   text: string;
   lines: string[];
 }
 
-// ---------------------------------------------------------------------------
-// Layout types — extracted from Azure Vision bounding polygons
-// ---------------------------------------------------------------------------
+const MAX_IMAGE_DIMENSION = 2048;
+const JPEG_QUALITY = 0.85;
+
+/* ------------------------------------------------------------------------ */
+/*  Layout types — extracted from Azure Vision bounding polygons             */
+/* ------------------------------------------------------------------------ */
 
 interface LayoutLine {
   text: string;
-  /** Vertical centre as % of page height (0 = top, 100 = bottom). */
   yPct: number;
-  /** Line height as % of page height (larger ⇒ heading). */
   heightPct: number;
-  /** Horizontal left edge as % of page width. */
   xPct: number;
-  /** Line width as % of page width. */
   widthPct: number;
-  /** Mean word-level OCR confidence (0–1). */
   confidence: number;
 }
 
-// ---------------------------------------------------------------------------
-// Image preparation
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------------ */
+/*  Image preparation                                                        */
+/* ------------------------------------------------------------------------ */
 
-/**
- * Convert a base64 data-URL to a Blob without fetch() — avoids Safari's
- * size limits that cause "Load failed" on large camera images.
- */
 function dataUrlToBlob(dataUrl: string): Blob {
   const [header, base64] = dataUrl.split(',');
   const mime = header.match(/:(.*?);/)?.[1] ?? 'image/jpeg';
@@ -59,15 +45,7 @@ function dataUrlToBlob(dataUrl: string): Blob {
   return new Blob([bytes], { type: mime });
 }
 
-/**
- * Resize and re-encode an image data-URL so that:
- *  - The longest side is at most MAX_IMAGE_DIMENSION px.
- *  - The blob stays well under the Azure 4 MB limit.
- *  - EXIF orientation is baked in (browsers apply it when drawing to canvas).
- */
 async function prepareImage(dataUrl: string): Promise<Blob> {
-  // Convert data URL → Blob manually (fetch(dataUrl) fails on mobile Safari
-  // with large images from phone cameras due to base64 size limits).
   const sourceBlob = dataUrlToBlob(dataUrl);
   const img = await createImageBitmap(sourceBlob);
 
@@ -79,8 +57,6 @@ async function prepareImage(dataUrl: string): Promise<Blob> {
     height = Math.round(height * scale);
   }
 
-  // Use OffscreenCanvas when available, fall back to regular canvas
-  // (OffscreenCanvas.convertToBlob is missing on Safari < 17)
   if (typeof OffscreenCanvas !== 'undefined') {
     try {
       const oc = new OffscreenCanvas(width, height);
@@ -89,7 +65,7 @@ async function prepareImage(dataUrl: string): Promise<Blob> {
       img.close();
       return await oc.convertToBlob({ type: 'image/jpeg', quality: JPEG_QUALITY });
     } catch {
-      // convertToBlob may not exist — fall through to regular canvas
+      /* fall through */
     }
   }
 
@@ -109,19 +85,13 @@ async function prepareImage(dataUrl: string): Promise<Blob> {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Layout extraction — bounding polygons → normalised percentages
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------------ */
+/*  Layout extraction                                                        */
+/* ------------------------------------------------------------------------ */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-
-function extractLayoutLines(
-  readResult: any,
-  imgWidth: number,
-  imgHeight: number,
-): LayoutLine[] {
+function extractLayoutLines(readResult: any, imgWidth: number, imgHeight: number): LayoutLine[] {
   const lines: LayoutLine[] = [];
-
   for (const block of readResult?.blocks ?? []) {
     for (const line of block.lines ?? []) {
       const text: string = (line.text ?? line.content ?? '').trim();
@@ -152,29 +122,19 @@ function extractLayoutLines(
           confidence,
         });
       } else {
-        // No polygon data — fallback without spatial info
         lines.push({ text, yPct: 50, heightPct: 2, xPct: 0, widthPct: 100, confidence: 0.5 });
       }
     }
   }
-
   return lines;
 }
-
 /* eslint-enable @typescript-eslint/no-explicit-any */
-
-// ---------------------------------------------------------------------------
-// Format layout-annotated lines for the LLM
-// ---------------------------------------------------------------------------
 
 function formatLayoutForLLM(layoutLines: LayoutLine[]): string {
   if (layoutLines.length === 0) return '';
-
-  // Compute median line height to identify relatively larger text
   const heights = layoutLines.map((l) => l.heightPct).sort((a, b) => a - b);
   const medianHeight = heights[Math.floor(heights.length / 2)];
 
-  // Compute vertical gaps between consecutive lines
   const gaps: number[] = [];
   for (let i = 1; i < layoutLines.length; i++) {
     gaps.push(layoutLines[i].yPct - layoutLines[i - 1].yPct);
@@ -186,25 +146,19 @@ function formatLayoutForLLM(layoutLines: LayoutLine[]): string {
   return layoutLines
     .map((line, i) => {
       const tags: string[] = [];
-
-      // Positional tags
       if (line.yPct < 8) tags.push('TOP');
       if (line.yPct > 92) tags.push('BOTTOM');
       if (line.heightPct > medianHeight * 1.4) tags.push('LARGE');
 
-      // Horizontal alignment: centred if midpoint is near page centre
       const midX = line.xPct + line.widthPct / 2;
       if (midX > 35 && midX < 65 && line.widthPct < 60) tags.push('CENTER');
 
-      // Indent detection: significantly offset from the left margin
       const leftEdges = layoutLines.map((l) => l.xPct);
       const typicalLeft = leftEdges.sort((a, b) => a - b)[Math.floor(leftEdges.length * 0.25)];
       if (line.xPct > typicalLeft + 4) tags.push('INDENT');
 
-      // Low confidence
       if (line.confidence < 0.7) tags.push('LOW-CONF');
 
-      // Paragraph gap: preceding vertical gap is noticeably larger than normal
       if (i > 0 && medianGap > 0) {
         const gap = layoutLines[i].yPct - layoutLines[i - 1].yPct;
         if (gap > medianGap * 1.8) tags.push('GAP');
@@ -216,9 +170,9 @@ function formatLayoutForLLM(layoutLines: LayoutLine[]): string {
     .join('\n');
 }
 
-// ---------------------------------------------------------------------------
-// LLM postprocessing
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------------ */
+/*  LLM postprocessing                                                       */
+/* ------------------------------------------------------------------------ */
 
 const CLEAN_PROMPT_WITH_LAYOUT = `You are an OCR postprocessor for a children's reading app.
 Given OCR lines with layout metadata from a scanned page, return ONLY the main readable text.
@@ -245,7 +199,6 @@ Rules:
 - Do NOT add, rephrase, or summarise — keep the original wording
 - Return the cleaned text only, no commentary or annotations`;
 
-/** Plain-text fallback when no layout data is available. */
 const CLEAN_PROMPT_PLAIN = `You are an OCR postprocessor for a children's reading app.
 Given raw OCR lines from a scanned page, return ONLY the main readable text.
 
@@ -258,109 +211,49 @@ Rules:
 - Do NOT add, rephrase, or summarise — keep the original wording
 - Return the cleaned text only, no commentary`;
 
-const MAX_RETRIES = 3;
-
-async function fetchWithRetry(url: string, init: RequestInit, retries = MAX_RETRIES): Promise<Response> {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const res = await fetch(url, init);
-    if (res.status !== 429 || attempt === retries) return res;
-    const retryAfter = Number(res.headers.get('Retry-After') || 0);
-    const delay = Math.max(retryAfter * 1000, 2000 * 2 ** attempt);
-    await new Promise((r) => setTimeout(r, delay));
-  }
-  return fetch(url, init);
-}
-
-/**
- * Use GPT-4o-mini to clean OCR output.
- * When layout data is available, sends annotated lines with spatial context.
- * Falls back to plain text lines when layout is unavailable.
- */
-async function postprocessOcr(
-  lines: string[],
-  layoutLines?: LayoutLine[],
-): Promise<string> {
-  if (!OPENAI_ENDPOINT || !OPENAI_KEY || !OPENAI_DEPLOYMENT || lines.length === 0) {
-    return lines.join(' ');
-  }
-
+async function postprocessOcr(lines: string[], layoutLines?: LayoutLine[]): Promise<string> {
+  if (lines.length === 0) return '';
   const hasLayout = layoutLines && layoutLines.length > 0;
   const systemPrompt = hasLayout ? CLEAN_PROMPT_WITH_LAYOUT : CLEAN_PROMPT_PLAIN;
   const userContent = hasLayout ? formatLayoutForLLM(layoutLines) : lines.join('\n');
 
-  const url = `${OPENAI_ENDPOINT}/openai/deployments/${OPENAI_DEPLOYMENT}/chat/completions?api-version=2024-02-01`;
-
   try {
-    const res = await fetchWithRetry(url, {
-      method: 'POST',
-      headers: {
-        'api-key': OPENAI_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userContent },
-        ],
-        temperature: 0.1,
-        max_tokens: 1000,
-      }),
+    const data = await apiPost<unknown, { content: string }>('/openai/chat', {
+      purpose: 'ocr-clean',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userContent },
+      ],
+      temperature: 0.1,
+      max_tokens: 1000,
     });
-
-    if (!res.ok) return lines.join(' ');
-
-    const data = await res.json();
-    const cleaned: string = data?.choices?.[0]?.message?.content ?? '';
-    return cleaned.trim() || lines.join(' ');
+    return data.content?.trim() || lines.join(' ');
   } catch {
     return lines.join(' ');
   }
 }
 
-// ---------------------------------------------------------------------------
-// Main entry point
-// ---------------------------------------------------------------------------
+/* ------------------------------------------------------------------------ */
+/*  Main entry point                                                         */
+/* ------------------------------------------------------------------------ */
 
-/**
- * Run Azure Computer Vision Read (OCR) on the supplied image.
- * @param imageDataUrl  A base64 data-URL produced by <canvas>.toDataURL() or similar.
- */
+interface VisionResponse {
+  metadata?: { width?: number; height?: number };
+  readResult?: unknown;
+}
+
 export async function recognizeText(imageDataUrl: string): Promise<OcrResult> {
-  if (!VISION_ENDPOINT || !VISION_KEY) {
-    throw new Error(
-      'Azure Computer Vision credentials are not configured. ' +
-      'Set VITE_AZURE_VISION_ENDPOINT and VITE_AZURE_VISION_KEY in your .env file.'
-    );
-  }
-
   const blob = await prepareImage(imageDataUrl);
+  const imageBase64 = await blobToBase64(blob);
 
-  const submitUrl = `${VISION_ENDPOINT.replace(/\/$/, '')}/computervision/imageanalysis:analyze?api-version=2024-02-01&features=read`;
-  const submitRes = await fetch(submitUrl, {
-    method: 'POST',
-    headers: {
-      'Ocp-Apim-Subscription-Key': VISION_KEY,
-      'Content-Type': 'image/jpeg',
-    },
-    body: blob,
+  const data = await apiPost<unknown, VisionResponse>('/ocr/recognize', {
+    imageBase64,
+    mimeType: 'image/jpeg',
   });
 
-  if (!submitRes.ok) {
-    const errText = await submitRes.text();
-    throw new Error(`Azure Vision API error ${submitRes.status}: ${errText}`);
-  }
-
-  const data = await submitRes.json();
-
-  // Extract image dimensions from response metadata
-  const imgWidth: number = data?.metadata?.width ?? 0;
-  const imgHeight: number = data?.metadata?.height ?? 0;
-  const readResult = data?.readResult;
-
-  // Extract layout-annotated lines (with bounding boxes + confidence)
-  const layoutLines = extractLayoutLines(readResult, imgWidth, imgHeight);
-
-  // Plain text lines for the OcrResult.lines field
+  const imgWidth = data.metadata?.width ?? 0;
+  const imgHeight = data.metadata?.height ?? 0;
+  const layoutLines = extractLayoutLines(data.readResult, imgWidth, imgHeight);
   const lines = layoutLines.map((l) => l.text);
 
   const text = await postprocessOcr(lines, layoutLines);

@@ -16,15 +16,22 @@ import type { AccountInfo } from '@azure/msal-browser';
 import { msalInstance, isMsalConfigured, LOGIN_SCOPES } from '../services/msalService';
 import type { CurrentUser, AuthProvider as AuthProviderType } from '../types/auth';
 import { isGoogleConfigured } from '../services/googleAuthService';
+import { setAuthTokenProvider, type AuthTokenInfo } from '../services/apiClient';
 
 const PROVIDER_KEY = 'wizbit:auth-provider';
 const GOOGLE_USER_KEY = 'wizbit:google-user';
+const GOOGLE_TOKEN_KEY = 'wizbit:google-token';
 
 interface GoogleUserInfo {
   sub: string;
   name?: string;
   email?: string;
   picture?: string;
+}
+
+interface StoredGoogleToken {
+  accessToken: string;
+  expiresAt: number;
 }
 
 interface AuthContextValue {
@@ -161,6 +168,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(u);
     localStorage.setItem(PROVIDER_KEY, 'google');
     localStorage.setItem(GOOGLE_USER_KEY, JSON.stringify(info));
+    // Persist the access token so /api/* calls authenticate after reload.
+    // Google access tokens are valid ~1h; the api proxy verifies via tokeninfo.
+    const stored: StoredGoogleToken = {
+      accessToken,
+      expiresAt: Date.now() + 55 * 60_000,
+    };
+    localStorage.setItem(GOOGLE_TOKEN_KEY, JSON.stringify(stored));
   }, []);
 
   // ── Sign out ──
@@ -173,12 +187,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
     localStorage.removeItem(PROVIDER_KEY);
     localStorage.removeItem(GOOGLE_USER_KEY);
+    localStorage.removeItem(GOOGLE_TOKEN_KEY);
 
     if (provider === 'microsoft' && msalInstance) {
       const account = msalInstance.getAllAccounts()[0];
       await msalInstance.logoutPopup({ account }).catch(() => {});
     }
     // Google: clearing stored user info is sufficient; no server-side logout needed
+  }, [user]);
+
+  // ── Wire fresh-token provider into apiClient ──
+  // Re-runs whenever the active user changes; the closure captures the latest
+  // `user.provider`. apiClient calls this lazily before every /api/* request.
+  useEffect(() => {
+    setAuthTokenProvider(async (): Promise<AuthTokenInfo | null> => {
+      const u = user;
+      if (!u) return null;
+      if (u.provider === 'microsoft' && msalInstance) {
+        try {
+          const account = msalInstance.getAllAccounts()[0];
+          if (!account) return null;
+          const result = await msalInstance.acquireTokenSilent({ account, scopes: LOGIN_SCOPES });
+          // Backend verifies signature + issuer; idToken's audience matches
+          // our app registration which is what we want for caller identity.
+          const token = result.idToken || result.accessToken;
+          if (!token) return null;
+          return { token, provider: 'microsoft' };
+        } catch {
+          return null;
+        }
+      }
+      if (u.provider === 'google') {
+        try {
+          const raw = localStorage.getItem(GOOGLE_TOKEN_KEY);
+          if (!raw) return null;
+          const stored = JSON.parse(raw) as StoredGoogleToken;
+          if (!stored.accessToken || stored.expiresAt < Date.now()) return null;
+          return { token: stored.accessToken, provider: 'google' };
+        } catch {
+          return null;
+        }
+      }
+      return null;
+    });
+    return () => {
+      setAuthTokenProvider(async () => null);
+    };
   }, [user]);
 
   return (

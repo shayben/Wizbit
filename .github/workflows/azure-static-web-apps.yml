@@ -27,24 +27,27 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install API dependencies
+        run: npm ci
+        working-directory: api
+
       - name: Lint
         run: npm run lint
 
       - name: Test
         run: npm test
 
+      - name: Build API
+        run: npm run build
+        working-directory: api
+
       - name: Build
         run: npm run build
         env:
-          VITE_AZURE_VISION_ENDPOINT: ${{ secrets.VITE_AZURE_VISION_ENDPOINT }}
-          VITE_AZURE_VISION_KEY: ${{ secrets.VITE_AZURE_VISION_KEY }}
-          VITE_AZURE_SPEECH_KEY: ${{ secrets.VITE_AZURE_SPEECH_KEY }}
-          VITE_AZURE_SPEECH_REGION: ${{ secrets.VITE_AZURE_SPEECH_REGION }}
-          VITE_AZURE_TRANSLATOR_KEY: ${{ secrets.VITE_AZURE_TRANSLATOR_KEY }}
-          VITE_AZURE_TRANSLATOR_REGION: ${{ secrets.VITE_AZURE_TRANSLATOR_REGION }}
-          VITE_AZURE_OPENAI_ENDPOINT: ${{ secrets.VITE_AZURE_OPENAI_ENDPOINT }}
-          VITE_AZURE_OPENAI_KEY: ${{ secrets.VITE_AZURE_OPENAI_KEY }}
-          VITE_AZURE_OPENAI_DEPLOYMENT: ${{ secrets.VITE_AZURE_OPENAI_DEPLOYMENT }}
+          # Server-side Azure secrets are NOT injected into the client bundle anymore.
+          # They live as Application Settings on the Static Web App resource and are
+          # read by the api/ Functions at runtime. The only client-side secrets are
+          # the SSO client IDs (which are public by design).
           VITE_AZURE_AD_CLIENT_ID: ${{ secrets.VITE_AZURE_AD_CLIENT_ID }}
           VITE_AZURE_AD_TENANT_ID: ${{ secrets.VITE_AZURE_AD_TENANT_ID }}
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.VITE_GOOGLE_CLIENT_ID }}
@@ -57,6 +60,8 @@ jobs:
           action: upload
           skip_app_build: true
           app_location: dist
+          api_location: api
+          api_build_command: "npm run build"
 
   close_pull_request:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'

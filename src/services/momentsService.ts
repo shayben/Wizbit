@@ -1,17 +1,16 @@
 /**
- * Analyses reading text with Azure OpenAI GPT-4o-mini to identify
- * "key moments" — points in the text where we can show a relevant
- * image or play a short piece of music to make reading immersive.
+ * Analyses reading text with Azure OpenAI GPT-4o-mini (via the Wizbit
+ * backend proxy) to identify "key moments" — points in the text where we
+ * can show a relevant image or play a short piece of music to make
+ * reading immersive.
  *
- * Includes retry with exponential backoff for 429 rate limits and
- * a simple in-memory cache to avoid duplicate requests.
+ * Includes a simple in-memory cache to avoid duplicate requests.
  */
 
 import { z } from 'zod';
+import { apiPost, QuotaExceededError } from './apiClient';
 
-const OPENAI_ENDPOINT = import.meta.env.VITE_AZURE_OPENAI_ENDPOINT as string;
-const OPENAI_KEY = import.meta.env.VITE_AZURE_OPENAI_KEY as string;
-const OPENAI_DEPLOYMENT = import.meta.env.VITE_AZURE_OPENAI_DEPLOYMENT as string;
+/* (Azure OpenAI is now invoked via the backend proxy — see apiClient.) */
 
 export interface KeyMoment {
   wordIndex: number;
@@ -68,29 +67,14 @@ For each moment return a JSON object with:
 
 Return ONLY a valid JSON array. No markdown fences, no explanation.`;
 
-const MAX_RETRIES = 3;
 const momentsCache = new Map<string, KeyMoment[]>();
 
-async function fetchWithRetry(url: string, init: RequestInit, retries = MAX_RETRIES): Promise<Response> {
-  for (let attempt = 0; attempt <= retries; attempt++) {
-    const res = await fetch(url, init);
-    if (res.status !== 429 || attempt === retries) return res;
-    const retryAfter = Number(res.headers.get('Retry-After') || 0);
-    const delay = Math.max(retryAfter * 1000, 2000 * 2 ** attempt);
-    await new Promise((r) => setTimeout(r, delay));
-  }
-  return fetch(url, init); // unreachable, but keeps TS happy
-}
-
 export async function analyzeTextForMoments(words: string[], knownStickerLabels?: string[]): Promise<KeyMoment[]> {
-  if (!OPENAI_ENDPOINT || !OPENAI_KEY || !OPENAI_DEPLOYMENT) return [];
-
   const text = words.join(' ');
   const cached = momentsCache.get(text);
   if (cached) return cached;
 
   const indexed = words.map((w, i) => `${i}:${w}`);
-  const url = `${OPENAI_ENDPOINT}/openai/deployments/${OPENAI_DEPLOYMENT}/chat/completions?api-version=2024-02-01`;
 
   let userContent = `Text: "${text}"\n\nWords (0-indexed): ${JSON.stringify(indexed)}`;
   if (knownStickerLabels?.length) {
@@ -98,26 +82,17 @@ export async function analyzeTextForMoments(words: string[], knownStickerLabels?
   }
 
   try {
-    const res = await fetchWithRetry(url, {
-      method: 'POST',
-      headers: {
-        'api-key': OPENAI_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: userContent },
-        ],
-        temperature: 0.7,
-        max_tokens: 500,
-      }),
+    const data = await apiPost<unknown, { content: string }>('/openai/chat', {
+      purpose: 'moments',
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userContent },
+      ],
+      temperature: 0.7,
+      max_tokens: 500,
     });
 
-    if (!res.ok) return [];
-
-    const data = await res.json();
-    const content: string = data?.choices?.[0]?.message?.content ?? '';
+    const content = data.content ?? '';
     const jsonStr = content.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
     const moments = JSON.parse(jsonStr) as KeyMoment[];
 
@@ -135,7 +110,10 @@ export async function analyzeTextForMoments(words: string[], knownStickerLabels?
 
     momentsCache.set(text, filtered);
     return filtered;
-  } catch {
+  } catch (err) {
+    // Quota errors must propagate so the UI can show the paywall;
+    // any other error is a best-effort silent failure.
+    if (err instanceof QuotaExceededError) throw err;
     return [];
   }
 }

@@ -1,0 +1,37 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "",
+    "FUNCTIONS_WORKER_RUNTIME": "node",
+    "FUNCTIONS_EXTENSION_VERSION": "~4",
+
+    "AZURE_VISION_ENDPOINT": "",
+    "AZURE_VISION_KEY": "",
+
+    "AZURE_SPEECH_KEY": "",
+    "AZURE_SPEECH_REGION": "",
+
+    "AZURE_TRANSLATOR_KEY": "",
+    "AZURE_TRANSLATOR_REGION": "",
+
+    "AZURE_OPENAI_ENDPOINT": "",
+    "AZURE_OPENAI_KEY": "",
+    "AZURE_OPENAI_DEPLOYMENT": "gpt-4o-mini",
+    "AZURE_DALLE_DEPLOYMENT": "",
+
+    "AZURE_AD_TENANT_ID": "common",
+    "GOOGLE_CLIENT_ID": "",
+
+    "COSMOS_ENDPOINT": "",
+    "COSMOS_KEY": "",
+    "COSMOS_DATABASE": "wizbit",
+
+    "ALLOW_ANONYMOUS": "true",
+    "ANONYMOUS_DAILY_LIMIT_MULTIPLIER": "0.5"
+  },
+  "Host": {
+    "LocalHttpPort": 7071,
+    "CORS": "http://localhost:5173",
+    "CORSCredentials": true
+  }
+}

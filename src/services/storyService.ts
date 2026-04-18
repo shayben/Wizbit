@@ -1,13 +1,14 @@
 /**
- * Story generation service — uses Azure OpenAI GPT-4o-mini to create
- * "choose your own adventure" chapters, conditioned by reading level.
+ * Story generation service — uses Azure OpenAI GPT-4o-mini via the
+ * Wizbit backend proxy (`/api/openai/chat`, purpose:'story-chapter').
+ *
+ * Per-user rate limits are enforced server-side; a 429 response surfaces
+ * here as `QuotaExceededError` so the calling component can show the
+ * upgrade screen.
  */
 
 import { z } from 'zod';
-
-const OPENAI_ENDPOINT = import.meta.env.VITE_AZURE_OPENAI_ENDPOINT as string;
-const OPENAI_KEY = import.meta.env.VITE_AZURE_OPENAI_KEY as string;
-const OPENAI_DEPLOYMENT = import.meta.env.VITE_AZURE_OPENAI_DEPLOYMENT as string;
+import { apiPost } from './apiClient';
 
 export interface StoryChoice {
   emoji: string;
@@ -90,19 +91,6 @@ function buildUserMessage(context: StoryContext, choice?: string): string {
   return `Story so far:\n${history}\n\nThe reader chose: "${choice}"\n\nWrite Chapter ${nextNum}.`;
 }
 
-const MAX_RETRIES = 3;
-
-async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const res = await fetch(url, init);
-    if (res.status !== 429 || attempt === MAX_RETRIES) return res;
-    const retryAfter = Number(res.headers.get('Retry-After') || 0);
-    const delay = Math.max(retryAfter * 1000, 2000 * 2 ** attempt);
-    await new Promise((r) => setTimeout(r, delay));
-  }
-  return fetch(url, init);
-}
-
 const ChapterSchema = z.object({
   title: z.string().optional(),
   text: z.string(),
@@ -118,36 +106,19 @@ export async function generateChapter(
   context: StoryContext,
   choice?: string,
 ): Promise<ChapterResult> {
-  if (!OPENAI_ENDPOINT || !OPENAI_KEY || !OPENAI_DEPLOYMENT) {
-    throw new Error('Azure OpenAI credentials are not configured.');
-  }
-
-  const url = `${OPENAI_ENDPOINT}/openai/deployments/${OPENAI_DEPLOYMENT}/chat/completions?api-version=2024-02-01`;
   const chapterNumber = context.chapters.length + 1;
 
-  const res = await fetchWithRetry(url, {
-    method: 'POST',
-    headers: {
-      'api-key': OPENAI_KEY,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messages: [
-        { role: 'system', content: buildSystemPrompt(context.readingLevel, context.chapters.length) },
-        { role: 'user', content: buildUserMessage(context, choice) },
-      ],
-      temperature: 0.85,
-      max_tokens: 800,
-    }),
+  const data = await apiPost<unknown, { content: string }>('/openai/chat', {
+    purpose: 'story-chapter',
+    messages: [
+      { role: 'system', content: buildSystemPrompt(context.readingLevel, context.chapters.length) },
+      { role: 'user', content: buildUserMessage(context, choice) },
+    ],
+    temperature: 0.85,
+    max_tokens: 800,
   });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Story generation failed (${res.status}): ${errText}`);
-  }
-
-  const data = await res.json();
-  const content: string = data?.choices?.[0]?.message?.content ?? '';
+  const content = data.content ?? '';
   const jsonStr = content.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
 
   try {
@@ -161,7 +132,6 @@ export async function generateChapter(
       isEnding: parsed.isEnding ?? false,
     };
   } catch {
-    // If JSON parsing fails, treat the raw content as chapter text
     return {
       chapterNumber,
       title: `Chapter ${chapterNumber}`,

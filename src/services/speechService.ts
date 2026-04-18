@@ -8,9 +8,42 @@
  */
 
 import * as SpeechSDK from 'microsoft-cognitiveservices-speech-sdk';
+import { apiGet } from './apiClient';
 
-const SPEECH_KEY = import.meta.env.VITE_AZURE_SPEECH_KEY as string;
-const SPEECH_REGION = import.meta.env.VITE_AZURE_SPEECH_REGION as string;
+/* Server-issued ephemeral Azure Speech token cache. */
+interface SpeechToken {
+  token: string;
+  region: string;
+  expiresAt: number;
+}
+let cachedSpeechToken: SpeechToken | null = null;
+let inflightTokenFetch: Promise<SpeechToken> | null = null;
+
+async function fetchSpeechToken(): Promise<SpeechToken> {
+  // Refresh ~1 minute before expiry.
+  if (cachedSpeechToken && cachedSpeechToken.expiresAt - 60_000 > Date.now()) {
+    return cachedSpeechToken;
+  }
+  if (inflightTokenFetch) return inflightTokenFetch;
+
+  inflightTokenFetch = (async () => {
+    try {
+      const data = await apiGet<{ token: string; region: string; expiresAt: string }>(
+        '/speech/token',
+      );
+      const tok: SpeechToken = {
+        token: data.token,
+        region: data.region,
+        expiresAt: new Date(data.expiresAt).getTime(),
+      };
+      cachedSpeechToken = tok;
+      return tok;
+    } finally {
+      inflightTokenFetch = null;
+    }
+  })();
+  return inflightTokenFetch;
+}
 
 /** Map of recognition locale → default TTS neural voice. */
 const VOICE_MAP: Record<string, string> = {
@@ -75,14 +108,9 @@ export type RecognizingCallback = (absoluteWordCount: number, interimText: strin
  */
 export type InsertionCallback = (insertedWord: string, offsetSec: number) => void;
 
-function getSpeechConfig(): SpeechSDK.SpeechConfig {
-  if (!SPEECH_KEY || !SPEECH_REGION) {
-    throw new Error(
-      'Azure Speech credentials are not configured. ' +
-      'Set VITE_AZURE_SPEECH_KEY and VITE_AZURE_SPEECH_REGION in your .env file.'
-    );
-  }
-  return SpeechSDK.SpeechConfig.fromSubscription(SPEECH_KEY, SPEECH_REGION);
+async function getSpeechConfig(): Promise<SpeechSDK.SpeechConfig> {
+  const tok = await fetchSpeechToken();
+  return SpeechSDK.SpeechConfig.fromAuthorizationToken(tok.token, tok.region);
 }
 
 /**
@@ -110,121 +138,138 @@ export function startPronunciationAssessment(
   baseWordOffset = 0,
   onInsertion?: InsertionCallback,
 ): () => void {
-  const speechConfig = getSpeechConfig();
-  speechConfig.speechRecognitionLanguage = locale;
+  let recognizer: SpeechSDK.SpeechRecognizer | null = null;
+  let cancelled = false;
 
-  const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
-
-  const pronunciationConfig = new SpeechSDK.PronunciationAssessmentConfig(
-    referenceText,
-    SpeechSDK.PronunciationAssessmentGradingSystem.HundredMark,
-    SpeechSDK.PronunciationAssessmentGranularity.Phoneme,
-    true,
-  );
-  pronunciationConfig.enableProsodyAssessment = false;
-
-  const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
-  pronunciationConfig.applyTo(recognizer);
-
-  // Accumulate per-utterance fluency scores so we can average them at session end.
-  const fluencyScores: number[] = [];
-
-  recognizer.recognized = (_sender, event) => {
-    if (event.result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
-      const jsonResult = event.result.properties.getProperty(
-        SpeechSDK.PropertyId.SpeechServiceResponse_JsonResult,
-      );
-      if (!jsonResult) return;
-
-      try {
-        const parsed = JSON.parse(jsonResult);
-        const nbest = parsed?.NBest?.[0];
-        if (!nbest) return;
-
-        // Capture utterance-level fluency score when present.
-        const utteranceFluency = Number(
-          (nbest.PronunciationAssessment as Record<string, unknown>)?.FluencyScore,
-        );
-        if (!isNaN(utteranceFluency) && utteranceFluency > 0) {
-          fluencyScores.push(utteranceFluency);
-        }
-
-        const words: WordResult[] = (nbest.Words ?? []).map((w: Record<string, unknown>) => {
-          const phonemes = (w.Phonemes as Record<string, unknown>[] | undefined) ?? [];
-          const phonemeScores = phonemes.map((p) =>
-            Number((p.PronunciationAssessment as Record<string, unknown>)?.AccuracyScore ?? 0),
-          );
-          return {
-            word: String(w.Word ?? ''),
-            accuracyScore: Number(
-              (w.PronunciationAssessment as Record<string, unknown>)?.AccuracyScore ?? 0,
-            ),
-            errorType: String(
-              (w.PronunciationAssessment as Record<string, unknown>)?.ErrorType ?? 'None',
-            ),
-            offsetSec: Number(w.Offset ?? 0) / 1e7,
-            durationSec: Number(w.Duration ?? 0) / 1e7,
-            phonemeScores,
-          };
-        });
-
-        if (onInsertion) {
-          for (const w of words) {
-            if (w.errorType === 'Insertion') onInsertion(w.word, w.offsetSec);
-          }
-        }
-
-        words.forEach(onWord);
-      } catch {
-        // ignore parse errors for individual results
-      }
+  (async () => {
+    let speechConfig: SpeechSDK.SpeechConfig;
+    try {
+      speechConfig = await getSpeechConfig();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : 'Speech token fetch failed');
+      return;
     }
-  };
+    if (cancelled) return;
+    speechConfig.speechRecognitionLanguage = locale;
 
-  // Interim results — report how many words have been recognised so far
-  if (onRecognizing) {
-    recognizer.recognizing = (_sender, event) => {
-      if (event.result.reason === SpeechSDK.ResultReason.RecognizingSpeech) {
-        const text = event.result.text ?? '';
-        const wordCount = (text.match(/\S+/g) ?? []).length;
-        if (wordCount > 0) onRecognizing(baseWordOffset + wordCount, text);
+    const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+
+    const pronunciationConfig = new SpeechSDK.PronunciationAssessmentConfig(
+      referenceText,
+      SpeechSDK.PronunciationAssessmentGradingSystem.HundredMark,
+      SpeechSDK.PronunciationAssessmentGranularity.Phoneme,
+      true,
+    );
+    pronunciationConfig.enableProsodyAssessment = false;
+
+    recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+    pronunciationConfig.applyTo(recognizer);
+
+    // Accumulate per-utterance fluency scores so we can average them at session end.
+    const fluencyScores: number[] = [];
+
+    recognizer.recognized = (_sender, event) => {
+      if (event.result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
+        const jsonResult = event.result.properties.getProperty(
+          SpeechSDK.PropertyId.SpeechServiceResponse_JsonResult,
+        );
+        if (!jsonResult) return;
+
+        try {
+          const parsed = JSON.parse(jsonResult);
+          const nbest = parsed?.NBest?.[0];
+          if (!nbest) return;
+
+          const utteranceFluency = Number(
+            (nbest.PronunciationAssessment as Record<string, unknown>)?.FluencyScore,
+          );
+          if (!isNaN(utteranceFluency) && utteranceFluency > 0) {
+            fluencyScores.push(utteranceFluency);
+          }
+
+          const words: WordResult[] = (nbest.Words ?? []).map((w: Record<string, unknown>) => {
+            const phonemes = (w.Phonemes as Record<string, unknown>[] | undefined) ?? [];
+            const phonemeScores = phonemes.map((p) =>
+              Number((p.PronunciationAssessment as Record<string, unknown>)?.AccuracyScore ?? 0),
+            );
+            return {
+              word: String(w.Word ?? ''),
+              accuracyScore: Number(
+                (w.PronunciationAssessment as Record<string, unknown>)?.AccuracyScore ?? 0,
+              ),
+              errorType: String(
+                (w.PronunciationAssessment as Record<string, unknown>)?.ErrorType ?? 'None',
+              ),
+              offsetSec: Number(w.Offset ?? 0) / 1e7,
+              durationSec: Number(w.Duration ?? 0) / 1e7,
+              phonemeScores,
+            };
+          });
+
+          if (onInsertion) {
+            for (const w of words) {
+              if (w.errorType === 'Insertion') onInsertion(w.word, w.offsetSec);
+            }
+          }
+
+          words.forEach(onWord);
+        } catch {
+          /* ignore parse errors for individual results */
+        }
       }
     };
-  }
 
-  recognizer.sessionStopped = () => {
-    const avgFluency =
-      fluencyScores.length > 0
-        ? fluencyScores.reduce((a, b) => a + b, 0) / fluencyScores.length
-        : 0;
-    onDone({
-      words: [],
-      pronunciationScore: 0,
-      accuracyScore: 0,
-      fluencyScore: avgFluency,
-      completenessScore: 0,
-    });
-    recognizer.close();
-  };
-
-  recognizer.canceled = (_sender, event) => {
-    if (event.reason === SpeechSDK.CancellationReason.Error) {
-      onError(`Speech recognition error: ${event.errorDetails}`);
+    if (onRecognizing) {
+      recognizer.recognizing = (_sender, event) => {
+        if (event.result.reason === SpeechSDK.ResultReason.RecognizingSpeech) {
+          const text = event.result.text ?? '';
+          const wordCount = (text.match(/\S+/g) ?? []).length;
+          if (wordCount > 0) onRecognizing(baseWordOffset + wordCount, text);
+        }
+      };
     }
-    recognizer.close();
-  };
 
-  recognizer.startContinuousRecognitionAsync(
-    () => { /* started */ },
-    (err) => onError(String(err)),
-  );
+    recognizer.sessionStopped = () => {
+      const avgFluency =
+        fluencyScores.length > 0
+          ? fluencyScores.reduce((a, b) => a + b, 0) / fluencyScores.length
+          : 0;
+      onDone({
+        words: [],
+        pronunciationScore: 0,
+        accuracyScore: 0,
+        fluencyScore: avgFluency,
+        completenessScore: 0,
+      });
+      recognizer?.close();
+    };
+
+    recognizer.canceled = (_sender, event) => {
+      if (event.reason === SpeechSDK.CancellationReason.Error) {
+        onError(`Speech recognition error: ${event.errorDetails}`);
+      }
+      recognizer?.close();
+    };
+
+    recognizer.startContinuousRecognitionAsync(
+      () => { /* started */ },
+      (err) => onError(String(err)),
+    );
+
+    if (cancelled) {
+      recognizer.stopContinuousRecognitionAsync(() => recognizer?.close(), () => recognizer?.close());
+    }
+  })();
 
   return () => {
-    recognizer.stopContinuousRecognitionAsync(
-      () => recognizer.close(),
+    cancelled = true;
+    if (!recognizer) return;
+    const r = recognizer;
+    r.stopContinuousRecognitionAsync(
+      () => r.close(),
       (err) => {
         console.error('Error stopping recognizer:', err);
-        recognizer.close();
+        r.close();
       },
     );
   };
@@ -349,45 +394,61 @@ export function startWindowedPronunciationAssessment(
  * Returns a promise with the transcript and a cancel function.
  */
 export function recognizeSpeech(locale: string = DEFAULT_LOCALE): { promise: Promise<string>; cancel: () => void } {
-  const speechConfig = getSpeechConfig();
-  speechConfig.speechRecognitionLanguage = locale;
-
-  const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
-  const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
-
+  let recognizer: SpeechSDK.SpeechRecognizer | null = null;
   let cancelled = false;
 
   const promise = new Promise<string>((resolve, reject) => {
-    recognizer.recognizeOnceAsync(
-      (result) => {
-        recognizer.close();
-        if (cancelled) { resolve(''); return; }
-        if (result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
-          resolve(result.text);
-        } else if (result.reason === SpeechSDK.ResultReason.NoMatch) {
-          reject(new Error('No speech detected — please try again.'));
-        } else {
-          reject(new Error('Speech recognition failed. Check your microphone.'));
-        }
-      },
-      (err) => {
-        recognizer.close();
-        reject(new Error(typeof err === 'string' ? err : 'Speech recognition error'));
-      },
-    );
+    (async () => {
+      let speechConfig: SpeechSDK.SpeechConfig;
+      try {
+        speechConfig = await getSpeechConfig();
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error('Speech token fetch failed'));
+        return;
+      }
+      if (cancelled) { resolve(''); return; }
+      speechConfig.speechRecognitionLanguage = locale;
+
+      const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+      recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+
+      recognizer.recognizeOnceAsync(
+        (result) => {
+          recognizer?.close();
+          if (cancelled) { resolve(''); return; }
+          if (result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
+            resolve(result.text);
+          } else if (result.reason === SpeechSDK.ResultReason.NoMatch) {
+            reject(new Error('No speech detected — please try again.'));
+          } else {
+            reject(new Error('Speech recognition failed. Check your microphone.'));
+          }
+        },
+        (err) => {
+          recognizer?.close();
+          reject(new Error(typeof err === 'string' ? err : 'Speech recognition error'));
+        },
+      );
+    })();
   });
 
   const cancel = () => {
     cancelled = true;
-    try { recognizer.close(); } catch { /* already closed */ }
+    try { recognizer?.close(); } catch { /* already closed */ }
   };
 
   return { promise, cancel };
 }
 
 /** Synthesise and play the given word using Azure TTS. */
-export function speakWord(word: string, locale: string = DEFAULT_LOCALE): void {
-  const speechConfig = getSpeechConfig();
+export async function speakWord(word: string, locale: string = DEFAULT_LOCALE): Promise<void> {
+  let speechConfig: SpeechSDK.SpeechConfig;
+  try {
+    speechConfig = await getSpeechConfig();
+  } catch (err) {
+    console.error('TTS token error:', err);
+    return;
+  }
   speechConfig.speechSynthesisVoiceName = resolveVoice(locale);
 
   const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig);
@@ -406,65 +467,79 @@ export function speakWord(word: string, locale: string = DEFAULT_LOCALE): void {
  * Returns a promise that resolves with the WordResult.
  */
 export function assessWord(word: string, locale: string = DEFAULT_LOCALE): { promise: Promise<WordResult>; cancel: () => void } {
-  const speechConfig = getSpeechConfig();
-  speechConfig.speechRecognitionLanguage = locale;
-
-  const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
-
-  const pronunciationConfig = new SpeechSDK.PronunciationAssessmentConfig(
-    word,
-    SpeechSDK.PronunciationAssessmentGradingSystem.HundredMark,
-    SpeechSDK.PronunciationAssessmentGranularity.Phoneme,
-    true,
-  );
-  pronunciationConfig.enableProsodyAssessment = false;
-
-  const recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
-  pronunciationConfig.applyTo(recognizer);
+  let recognizer: SpeechSDK.SpeechRecognizer | null = null;
+  let cancelled = false;
 
   const promise = new Promise<WordResult>((resolve, reject) => {
-    recognizer.recognizeOnceAsync(
-      (result) => {
-        recognizer.close();
-        if (result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
-          const json = result.properties.getProperty(
-            SpeechSDK.PropertyId.SpeechServiceResponse_JsonResult,
-          );
-          if (!json) { reject(new Error('No result')); return; }
-          try {
-            const parsed = JSON.parse(json);
-            const nbest = parsed?.NBest?.[0];
-            const w = nbest?.Words?.[0] as Record<string, unknown> | undefined;
-            if (!w) { reject(new Error('No word result')); return; }
+    (async () => {
+      let speechConfig: SpeechSDK.SpeechConfig;
+      try {
+        speechConfig = await getSpeechConfig();
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error('Speech token fetch failed'));
+        return;
+      }
+      if (cancelled) { reject(new Error('cancelled')); return; }
+      speechConfig.speechRecognitionLanguage = locale;
 
-            const phonemes = (w.Phonemes as Record<string, unknown>[] | undefined) ?? [];
-            resolve({
-              word: String(w.Word ?? ''),
-              accuracyScore: Number(
-                (w.PronunciationAssessment as Record<string, unknown>)?.AccuracyScore ?? 0,
-              ),
-              errorType: String(
-                (w.PronunciationAssessment as Record<string, unknown>)?.ErrorType ?? 'None',
-              ),
-              offsetSec: 0,
-              durationSec: 0,
-              phonemeScores: phonemes.map((p) =>
-                Number((p.PronunciationAssessment as Record<string, unknown>)?.AccuracyScore ?? 0),
-              ),
-            });
-          } catch { reject(new Error('Parse error')); }
-        } else if (result.reason === SpeechSDK.ResultReason.NoMatch) {
-          reject(new Error('No speech detected — try again'));
-        } else {
-          reject(new Error('Recognition failed'));
-        }
-      },
-      (err) => { recognizer.close(); reject(new Error(String(err))); },
-    );
+      const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
+      const pronunciationConfig = new SpeechSDK.PronunciationAssessmentConfig(
+        word,
+        SpeechSDK.PronunciationAssessmentGradingSystem.HundredMark,
+        SpeechSDK.PronunciationAssessmentGranularity.Phoneme,
+        true,
+      );
+      pronunciationConfig.enableProsodyAssessment = false;
+
+      recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
+      pronunciationConfig.applyTo(recognizer);
+
+      recognizer.recognizeOnceAsync(
+        (result) => {
+          recognizer?.close();
+          if (result.reason === SpeechSDK.ResultReason.RecognizedSpeech) {
+            const json = result.properties.getProperty(
+              SpeechSDK.PropertyId.SpeechServiceResponse_JsonResult,
+            );
+            if (!json) { reject(new Error('No result')); return; }
+            try {
+              const parsed = JSON.parse(json);
+              const nbest = parsed?.NBest?.[0];
+              const w = nbest?.Words?.[0] as Record<string, unknown> | undefined;
+              if (!w) { reject(new Error('No word result')); return; }
+
+              const phonemes = (w.Phonemes as Record<string, unknown>[] | undefined) ?? [];
+              resolve({
+                word: String(w.Word ?? ''),
+                accuracyScore: Number(
+                  (w.PronunciationAssessment as Record<string, unknown>)?.AccuracyScore ?? 0,
+                ),
+                errorType: String(
+                  (w.PronunciationAssessment as Record<string, unknown>)?.ErrorType ?? 'None',
+                ),
+                offsetSec: 0,
+                durationSec: 0,
+                phonemeScores: phonemes.map((p) =>
+                  Number((p.PronunciationAssessment as Record<string, unknown>)?.AccuracyScore ?? 0),
+                ),
+              });
+            } catch { reject(new Error('Parse error')); }
+          } else if (result.reason === SpeechSDK.ResultReason.NoMatch) {
+            reject(new Error('No speech detected — try again'));
+          } else {
+            reject(new Error('Recognition failed'));
+          }
+        },
+        (err) => { recognizer?.close(); reject(new Error(String(err))); },
+      );
+    })();
   });
 
   return {
     promise,
-    cancel: () => recognizer.close(),
+    cancel: () => {
+      cancelled = true;
+      try { recognizer?.close(); } catch { /* already closed */ }
+    },
   };
 }

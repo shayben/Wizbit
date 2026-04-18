@@ -1,19 +1,11 @@
 /**
- * Translation service — batch-translates all words in a text via Azure OpenAI,
- * returning a word→translation map. Individual word lookups are instant after that.
+ * Translation service — calls the Wizbit backend proxy for both Azure
+ * Translator (per-word in-context lookups) and Azure OpenAI (whole-text
+ * batch translation). Public exports are unchanged.
  */
 
 import { z } from 'zod';
-
-const TRANSLATOR_KEY = import.meta.env.VITE_AZURE_TRANSLATOR_KEY as string;
-const TRANSLATOR_REGION = import.meta.env.VITE_AZURE_TRANSLATOR_REGION as string;
-
-const TRANSLATE_BASE =
-  'https://api.cognitive.microsofttranslator.com/translate?api-version=3.0';
-
-const OPENAI_ENDPOINT = import.meta.env.VITE_AZURE_OPENAI_ENDPOINT as string;
-const OPENAI_KEY = import.meta.env.VITE_AZURE_OPENAI_KEY as string;
-const OPENAI_DEPLOYMENT = import.meta.env.VITE_AZURE_OPENAI_DEPLOYMENT as string;
+import { apiPost, QuotaExceededError } from './apiClient';
 
 export interface SupportedLanguage {
   code: string;
@@ -45,33 +37,17 @@ export interface TranslationResult {
  * Translate an English word or phrase to the given target language.
  */
 export async function translateWord(text: string, langCode = 'he'): Promise<TranslationResult> {
-  if (!TRANSLATOR_KEY || !TRANSLATOR_REGION) {
-    throw new Error(
-      'Azure Translator credentials are not configured. ' +
-        'Set VITE_AZURE_TRANSLATOR_KEY and VITE_AZURE_TRANSLATOR_REGION in your .env file.',
+  try {
+    const data = await apiPost<unknown, Array<{ translations?: Array<{ text?: string }> }>>(
+      '/translate',
+      { text, to: langCode },
     );
+    const translation: string = data?.[0]?.translations?.[0]?.text ?? '';
+    return { translation };
+  } catch (err) {
+    if (err instanceof QuotaExceededError) throw err;
+    return { translation: '' };
   }
-
-  const url = `${TRANSLATE_BASE}&to=${langCode}`;
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Ocp-Apim-Subscription-Key': TRANSLATOR_KEY,
-      'Ocp-Apim-Subscription-Region': TRANSLATOR_REGION,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify([{ Text: text }]),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`Translator API error ${res.status}: ${errText}`);
-  }
-
-  const data = await res.json();
-  const translation: string = data?.[0]?.translations?.[0]?.text ?? '';
-  return { translation };
 }
 
 /**
@@ -120,29 +96,16 @@ export async function translateWordInContext(
 ): Promise<TranslationResult> {
   const clean = word.replace(/[^a-zA-Z']/g, '');
 
-  if (!TRANSLATOR_KEY || !TRANSLATOR_REGION) {
-    return translateWord(clean, langCode);
-  }
-
   const srcStart = fullText.indexOf(word);
   if (srcStart === -1) return translateWord(clean, langCode);
   const srcEnd = srcStart + word.length - 1;
 
   try {
-    const url = `${TRANSLATE_BASE}&to=${langCode}&includeAlignment=true`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Ocp-Apim-Subscription-Key': TRANSLATOR_KEY,
-        'Ocp-Apim-Subscription-Region': TRANSLATOR_REGION,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify([{ Text: fullText }]),
-    });
+    const data = await apiPost<
+      unknown,
+      Array<{ translations?: Array<{ text?: string; alignment?: { proj?: string } }> }>
+    >('/translate', { text: fullText, to: langCode, includeAlignment: true });
 
-    if (!res.ok) return translateWord(clean, langCode);
-
-    const data = await res.json();
     const translation = data?.[0]?.translations?.[0];
     const translatedFull: string = translation?.text ?? '';
     const alignment: string = translation?.alignment?.proj ?? '';
@@ -159,7 +122,8 @@ export async function translateWordInContext(
     }
 
     return translateWord(clean, langCode);
-  } catch {
+  } catch (err) {
+    if (err instanceof QuotaExceededError) throw err;
     return translateWord(clean, langCode);
   }
 }
@@ -168,24 +132,12 @@ export async function translateWordInContext(
 
 export type WordTranslationMap = Map<string, string>;
 
-const MAX_RETRIES = 3;
-
-async function fetchWithRetry(url: string, init: RequestInit): Promise<Response> {
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const res = await fetch(url, init);
-    if (res.status !== 429 || attempt === MAX_RETRIES) return res;
-    const retryAfter = Number(res.headers.get('Retry-After') || 0);
-    const delay = Math.max(retryAfter * 1000, 2000 * 2 ** attempt);
-    await new Promise((r) => setTimeout(r, delay));
-  }
-  return fetch(url, init);
-}
-
 /**
- * Translate all unique words in a text at once using Azure OpenAI.
- * Returns a Map from lowercase English word → translated word.
+ * Translate all unique words in a text at once using Azure OpenAI (via the
+ * backend proxy). Returns a Map from lowercase English word → translated word.
  *
- * One API call replaces N per-word calls. Falls back to empty map on failure.
+ * One API call replaces N per-word calls. Falls back to empty map on failure
+ * EXCEPT for quota errors which propagate to the UI.
  */
 export async function batchTranslateText(
   fullText: string,
@@ -194,45 +146,30 @@ export async function batchTranslateText(
 ): Promise<WordTranslationMap> {
   const map: WordTranslationMap = new Map();
 
-  if (!OPENAI_ENDPOINT || !OPENAI_KEY || !OPENAI_DEPLOYMENT) return map;
-
   const words = fullText.match(/[a-zA-Z']+/g) ?? [];
   const unique = [...new Set(words.map((w) => w.toLowerCase()))];
   if (unique.length === 0) return map;
 
-  const url = `${OPENAI_ENDPOINT}/openai/deployments/${OPENAI_DEPLOYMENT}/chat/completions?api-version=2024-02-01`;
-
   try {
-    const res = await fetchWithRetry(url, {
-      method: 'POST',
-      headers: {
-        'api-key': OPENAI_KEY,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        messages: [
-          {
-            role: 'system',
-            content: `You are a translator for a children's reading app. Translate each English word to ${langLabel} (${langCode}), using the surrounding text for context so polysemous words get the right meaning.\n\nReturn ONLY a valid JSON object mapping each English word (lowercase) to its translation. No markdown fences, no explanation.\n\nExample: {"cat": "חתול", "sat": "ישב"}`,
-          },
-          {
-            role: 'user',
-            content: `Full text for context:\n"${fullText}"\n\nTranslate these words: ${JSON.stringify(unique)}`,
-          },
-        ],
-        temperature: 0.1,
-        max_tokens: Math.min(unique.length * 20, 2000),
-      }),
+    const data = await apiPost<unknown, { content: string }>('/openai/chat', {
+      purpose: 'translate-batch',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a translator for a children's reading app. Translate each English word to ${langLabel} (${langCode}), using the surrounding text for context so polysemous words get the right meaning.\n\nReturn ONLY a valid JSON object mapping each English word (lowercase) to its translation. No markdown fences, no explanation.\n\nExample: {"cat": "חתול", "sat": "ישב"}`,
+        },
+        {
+          role: 'user',
+          content: `Full text for context:\n"${fullText}"\n\nTranslate these words: ${JSON.stringify(unique)}`,
+        },
+      ],
+      temperature: 0.1,
+      max_tokens: Math.min(unique.length * 20, 2000),
     });
 
-    if (!res.ok) return map;
-
-    const data = await res.json();
-    const content: string = data?.choices?.[0]?.message?.content ?? '';
+    const content = data.content ?? '';
     const jsonStr = content.replace(/```json?\n?/g, '').replace(/```/g, '').trim();
-    const parsed = z.record(z.string(), z.string()).safeParse(
-      JSON.parse(jsonStr),
-    );
+    const parsed = z.record(z.string(), z.string()).safeParse(JSON.parse(jsonStr));
     if (!parsed.success) return map;
 
     for (const [key, val] of Object.entries(parsed.data)) {
@@ -240,7 +177,8 @@ export async function batchTranslateText(
         map.set(key.toLowerCase(), val.trim());
       }
     }
-  } catch {
+  } catch (err) {
+    if (err instanceof QuotaExceededError) throw err;
     // Best-effort — return whatever we got
   }
 
