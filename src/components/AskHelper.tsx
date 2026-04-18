@@ -100,7 +100,15 @@ const AskHelper: React.FC<AskHelperProps> = ({ uid, accountLanguage, onAccountLa
       setResult({ classification });
       setPhase('result');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Something went wrong.';
+      // Surface ApiError upstream body for debuggability — esp. helpful when
+      // Whisper rejects an audio format and the proxy returns 502.
+      let msg = err instanceof Error ? err.message : 'Something went wrong.';
+      if (err && typeof err === 'object' && 'status' in err && 'body' in err) {
+        const body = (err as { body?: unknown }).body;
+        const bodyStr = typeof body === 'string' ? body : JSON.stringify(body);
+        msg = `${msg} — ${bodyStr.slice(0, 300)}`;
+        console.error('AskHelper API error', err);
+      }
       if (msg === 'cancelled') { reset(); return; }
       setErrorMsg(msg);
       setPhase('error');
