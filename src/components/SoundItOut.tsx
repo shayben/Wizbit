@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { speakSound, speakWord } from '../services/speechService';
 import {
   cleanReadableWord,
@@ -17,19 +17,43 @@ const SoundItOut: React.FC<SoundItOutProps> = ({ word }) => {
   const locale = readingLocale(word);
   const isHebrew = detectReadingLanguage(word) === 'he';
   const [playing, setPlaying] = useState(false);
+  const playingRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const handleSoundOut = useCallback(async () => {
-    if (playing) return;
+    if (playingRef.current) return;
+    playingRef.current = true;
     setPlaying(true);
     try {
       for (const part of parts) {
+        if (!mountedRef.current) break;
         if (!part.silent) await speakSound(part.text, locale, part.phoneme);
       }
-      await speakWord(cleanWord, locale);
+      if (mountedRef.current) await speakWord(cleanWord, locale);
     } finally {
-      setPlaying(false);
+      playingRef.current = false;
+      if (mountedRef.current) setPlaying(false);
     }
-  }, [cleanWord, locale, parts, playing]);
+  }, [cleanWord, locale, parts]);
+
+  const handlePart = useCallback(async (text: string, phoneme?: string) => {
+    if (playingRef.current) return;
+    playingRef.current = true;
+    setPlaying(true);
+    try {
+      await speakSound(text, locale, phoneme);
+    } finally {
+      playingRef.current = false;
+      if (mountedRef.current) setPlaying(false);
+    }
+  }, [locale]);
 
   if (parts.length === 0) return null;
 
@@ -60,10 +84,8 @@ const SoundItOut: React.FC<SoundItOutProps> = ({ word }) => {
             {index > 0 && <span className="text-indigo-300 font-bold" aria-hidden="true">·</span>}
             <button
               type="button"
-              onClick={() => {
-                if (!part.silent) void speakSound(part.text, locale, part.phoneme);
-              }}
-              disabled={part.silent}
+              onClick={() => { void handlePart(part.text, part.phoneme); }}
+              disabled={part.silent || playing}
               aria-label={part.silent ? `${part.text}, quiet letter` : `Hear ${part.text}`}
               title={part.silent ? 'Quiet letter' : `Hear ${part.text}`}
               className={`min-w-11 min-h-11 px-2 rounded-xl text-2xl md:text-3xl font-bold border transition-colors ${

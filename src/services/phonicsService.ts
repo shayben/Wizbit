@@ -29,7 +29,7 @@ const LONG_VOWELS: Record<string, string> = {
 export function cleanReadableWord(raw: string): string {
   return raw
     .normalize('NFC')
-    .replace(/[^\p{Script=Latin}\p{Script=Hebrew}\p{M}']/gu, '');
+    .replace(/[^\p{L}\p{M}']/gu, '');
 }
 
 export function detectReadingLanguage(raw: string): ReadingLanguage {
