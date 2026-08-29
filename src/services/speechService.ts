@@ -485,15 +485,65 @@ export async function speakWord(word: string, locale: string = DEFAULT_LOCALE): 
     `<mstts:silence type="Tailing-exact" value="120ms"/>` +
     `</voice></speak>`;
 
-  const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig);
-  synthesizer.speakSsmlAsync(
-    ssml,
-    () => synthesizer.close(),
-    (err) => {
-      console.error('TTS error:', err);
-      synthesizer.close();
-    },
-  );
+  await playSsml(speechConfig, ssml);
+}
+
+function playSsml(speechConfig: SpeechSDK.SpeechConfig, ssml: string): Promise<void> {
+  return new Promise((resolve) => {
+    const synthesizer = new SpeechSDK.SpeechSynthesizer(speechConfig);
+    synthesizer.speakSsmlAsync(
+      ssml,
+      () => {
+        synthesizer.close();
+        resolve();
+      },
+      (err) => {
+        console.error('TTS error:', err);
+        synthesizer.close();
+        resolve();
+      },
+    );
+  });
+}
+
+/**
+ * Play one early-reading sound. English phonograms use IPA so the child hears
+ * the sound rather than the letter name; pointed Hebrew graphemes are passed
+ * directly to the Hebrew voice so nikud controls the vowel.
+ */
+export async function speakSound(
+  text: string,
+  locale: string = DEFAULT_LOCALE,
+  phoneme?: string,
+): Promise<void> {
+  let speechConfig: SpeechSDK.SpeechConfig;
+  try {
+    speechConfig = await getSpeechConfig();
+  } catch (err) {
+    console.error('TTS token error:', err);
+    return;
+  }
+
+  const voice = resolveVoice(locale);
+  speechConfig.speechSynthesisVoiceName = voice;
+  speechConfig.speechSynthesisOutputFormat =
+    SpeechSDK.SpeechSynthesisOutputFormat.Audio24Khz96KBitRateMonoMp3;
+
+  const safeText = escapeSsml(text);
+  const sound = phoneme
+    ? `<phoneme alphabet="ipa" ph="${escapeSsml(phoneme)}">${safeText}</phoneme>`
+    : safeText;
+  const ssml =
+    `<speak version="1.0" xml:lang="${locale}" ` +
+    `xmlns="http://www.w3.org/2001/10/synthesis" ` +
+    `xmlns:mstts="https://www.w3.org/2001/mstts">` +
+    `<voice name="${voice}">` +
+    `<mstts:silence type="Leading-exact" value="150ms"/>` +
+    `<prosody rate="-20%">${sound}</prosody>` +
+    `<mstts:silence type="Tailing-exact" value="150ms"/>` +
+    `</voice></speak>`;
+
+  await playSsml(speechConfig, ssml);
 }
 
 /**

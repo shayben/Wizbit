@@ -2,7 +2,9 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import SyllableBreakdown from './SyllableBreakdown';
 import TranslationDisplay from './TranslationDisplay';
 import PracticeButton from './PracticeButton';
+import SoundItOut from './SoundItOut';
 import { speakWord } from '../services/speechService';
+import { cleanReadableWord, detectReadingLanguage, readingLocale } from '../services/phonicsService';
 import type { WordResult } from '../services/speechService';
 import type { WordTiming } from '../hooks/useAssessment';
 import type { PreloadedMoment } from '../services/mediaService';
@@ -28,7 +30,9 @@ interface WordPopupProps {
 }
 
 const WordPopup: React.FC<WordPopupProps> = ({ word, textDir = 'rtl', translationMap, recordingBlob, timing, moment, onPracticeResult, onClose }) => {
-  const cleanWord = word.replace(/[^a-zA-Z']/g, '');
+  const cleanWord = cleanReadableWord(word);
+  const locale = readingLocale(word);
+  const isEnglish = detectReadingLanguage(word) === 'en';
   const [playingBack, setPlayingBack] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -80,8 +84,8 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, textDir = 'rtl', translatio
   }, [recordingBlob, timing]);
 
   const handlePlayCorrect = useCallback(() => {
-    speakWord(cleanWord);
-  }, [cleanWord]);
+    speakWord(cleanWord, locale);
+  }, [cleanWord, locale]);
 
   return (
     <>
@@ -108,7 +112,12 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, textDir = 'rtl', translatio
         </div>
       {/* Header: word + close */}
       <div className="flex items-center justify-between mb-3">
-        <span className="text-2xl md:text-3xl font-bold text-indigo-700">{cleanWord}</span>
+        <span
+          className="text-2xl md:text-3xl font-bold text-indigo-700"
+          dir={isEnglish ? 'ltr' : 'rtl'}
+        >
+          {cleanWord}
+        </span>
         <button
           type="button"
           onClick={onClose}
@@ -118,8 +127,10 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, textDir = 'rtl', translatio
         </button>
       </div>
 
-      {/* Syllable accuracy breakdown */}
-      <SyllableBreakdown word={word} phonemeScores={phonemeScores} />
+      <SoundItOut word={word} />
+
+      {/* Azure's syllable scores currently apply to English assessment. */}
+      {isEnglish && <SyllableBreakdown word={word} phonemeScores={phonemeScores} />}
 
       {/* Translation */}
       <TranslationDisplay word={word} translationMap={translationMap} textDir={textDir} />
@@ -187,7 +198,7 @@ const WordPopup: React.FC<WordPopupProps> = ({ word, textDir = 'rtl', translatio
         >
           🔊 Hear it
         </button>
-        <PracticeButton word={word} onResult={onPracticeResult} />
+        <PracticeButton word={word} locale={locale} onResult={onPracticeResult} />
       </div>
       </div>
     </>

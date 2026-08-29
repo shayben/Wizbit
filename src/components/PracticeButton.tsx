@@ -5,26 +5,28 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { assessWord } from '../services/speechService';
 import type { WordResult } from '../services/speechService';
+import { cleanReadableWord } from '../services/phonicsService';
 
 interface PracticeButtonProps {
   word: string;
+  locale?: string;
   onResult?: (result: WordResult) => void;
 }
 
-const PracticeButton: React.FC<PracticeButtonProps> = ({ word, onResult }) => {
+const PracticeButton: React.FC<PracticeButtonProps> = ({ word, locale = 'en-US', onResult }) => {
   const [practicing, setPracticing] = useState(false);
   const [practiceScore, setPracticeScore] = useState<number | null>(null);
   const [practiceError, setPracticeError] = useState<string | null>(null);
   const cancelRef = useRef<(() => void) | null>(null);
 
-  const cleanWord = word.replace(/[^a-zA-Z']/g, '');
+  const cleanWord = cleanReadableWord(word);
 
   const handlePractice = useCallback(async () => {
     setPracticing(true);
     setPracticeScore(null);
     setPracticeError(null);
 
-    const { promise, cancel } = assessWord(cleanWord);
+    const { promise, cancel } = assessWord(cleanWord, locale);
     cancelRef.current = cancel;
 
     try {
@@ -37,7 +39,7 @@ const PracticeButton: React.FC<PracticeButtonProps> = ({ word, onResult }) => {
       setPracticing(false);
       cancelRef.current = null;
     }
-  }, [cleanWord, onResult]);
+  }, [cleanWord, locale, onResult]);
 
   // Cleanup on unmount
   React.useEffect(() => {
