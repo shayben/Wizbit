@@ -188,14 +188,14 @@ export default function App() {
             setResumeStory(story);
             navigate('adventure');
           }
-
-          // ── K–5 math practice ──
-          if (step === 'math') {
-            return <MathPracticeMode uid={user?.uid} onExit={goHome} />;
-          }
         }}
       />
     );
+  }
+
+  // ── K–5 math practice ──
+  if (step === 'math') {
+    return <MathPracticeMode uid={user?.uid} onExit={goHome} />;
   }
 
   // ── Home: camera button + demo levels ──

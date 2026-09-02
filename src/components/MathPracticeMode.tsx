@@ -25,7 +25,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
   const [answer, setAnswer] = useState('');
   const [responses, setResponses] = useState<MathResponse[]>([]);
   const [validationError, setValidationError] = useState('');
-  const questionStartedAt = useRef(Date.now());
+  const questionStartedAt = useRef(0);
 
   const selectedSkill = MATH_SKILLS.find((skill) => skill.id === skillId);
   const currentQuestion = questions[currentIndex];
@@ -37,14 +37,14 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
     setPhase('skill');
   }
 
-  function startPractice(selectedSkillId: string) {
+  function startPractice(selectedSkillId: string, startedAt: number) {
     setSkillId(selectedSkillId);
     setQuestions(generateMathQuestions(selectedSkillId));
     setCurrentIndex(0);
     setAnswer('');
     setResponses([]);
     setValidationError('');
-    questionStartedAt.current = Date.now();
+    questionStartedAt.current = startedAt;
     setPhase('practice');
   }
 
@@ -63,7 +63,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
       expectedAnswer: currentQuestion.answer,
       studentAnswer,
       correct: Math.abs(studentAnswer - currentQuestion.answer) < 0.0001,
-      responseMs: Math.max(0, Date.now() - questionStartedAt.current),
+      responseMs: Math.max(0, event.timeStamp - questionStartedAt.current),
     };
     const nextResponses = [...responses, response];
     setResponses(nextResponses);
@@ -72,7 +72,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
 
     if (currentIndex + 1 < questions.length) {
       setCurrentIndex((index) => index + 1);
-      questionStartedAt.current = Date.now();
+      questionStartedAt.current = event.timeStamp;
       return;
     }
 
@@ -97,8 +97,8 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
     setPhase('results');
   }
 
-  function retry() {
-    if (skillId) startPractice(skillId);
+  function retry(event: React.MouseEvent) {
+    if (skillId) startPractice(skillId, event.timeStamp);
   }
 
   const header = (
@@ -160,7 +160,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
               <button
                 key={skill.id}
                 type="button"
-                onClick={() => startPractice(skill.id)}
+                onClick={(event) => startPractice(skill.id, event.timeStamp)}
                 className="text-left bg-white border border-violet-100 rounded-2xl p-5 shadow-sm active:bg-violet-50 transition-colors"
               >
                 <span className="text-3xl">{skill.emoji}</span>
