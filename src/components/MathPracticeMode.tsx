@@ -24,6 +24,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answer, setAnswer] = useState('');
   const [responses, setResponses] = useState<MathResponse[]>([]);
+  const [feedback, setFeedback] = useState<MathResponse | null>(null);
   const [validationError, setValidationError] = useState('');
   const questionStartedAt = useRef(0);
 
@@ -43,6 +44,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
     setCurrentIndex(0);
     setAnswer('');
     setResponses([]);
+    setFeedback(null);
     setValidationError('');
     questionStartedAt.current = startedAt;
     setPhase('practice');
@@ -50,7 +52,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
 
   function submitAnswer(event: React.FormEvent) {
     event.preventDefault();
-    if (!currentQuestion || !grade || !selectedSkill) return;
+    if (!currentQuestion || !grade || !selectedSkill || feedback) return;
 
     const studentAnswer = Number(answer);
     if (answer.trim() === '' || !Number.isFinite(studentAnswer)) {
@@ -67,19 +69,24 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
     };
     const nextResponses = [...responses, response];
     setResponses(nextResponses);
+    setFeedback(response);
     setAnswer('');
     setValidationError('');
+  }
 
+  function continuePractice(event: React.MouseEvent) {
+    if (!feedback || !grade || !selectedSkill) return;
     if (currentIndex + 1 < questions.length) {
       setCurrentIndex((index) => index + 1);
+      setFeedback(null);
       questionStartedAt.current = event.timeStamp;
       return;
     }
 
-    const finalCorrectCount = nextResponses.filter((item) => item.correct).length;
-    const finalAccuracy = Math.round((finalCorrectCount / nextResponses.length) * 100);
+    const finalCorrectCount = responses.filter((item) => item.correct).length;
+    const finalAccuracy = Math.round((finalCorrectCount / responses.length) * 100);
     const averageResponseMs = Math.round(
-      nextResponses.reduce((sum, item) => sum + item.responseMs, 0) / nextResponses.length,
+      responses.reduce((sum, item) => sum + item.responseMs, 0) / responses.length,
     );
     const now = new Date();
     void saveMathSession(uid, {
@@ -90,9 +97,9 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
       skillName: selectedSkill.name,
       accuracy: finalAccuracy,
       correctCount: finalCorrectCount,
-      questionCount: nextResponses.length,
+      questionCount: responses.length,
       averageResponseMs,
-      responses: nextResponses,
+      responses,
     });
     setPhase('results');
   }
@@ -225,27 +232,49 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
           <p className="text-3xl md:text-5xl font-extrabold text-gray-800 min-h-16 flex items-center justify-center">
             {currentQuestion?.prompt}
           </p>
-          <form onSubmit={submitAnswer} className="mt-8">
-            <label htmlFor="math-answer" className="sr-only">Your answer</label>
-            <input
-              id="math-answer"
-              type="number"
-              step="any"
-              inputMode="decimal"
-              autoFocus
-              value={answer}
-              onChange={(event) => setAnswer(event.target.value)}
-              placeholder="Your answer"
-              className="w-full rounded-2xl border-2 border-violet-200 px-4 py-4 text-center text-2xl font-bold outline-none focus:border-violet-500"
-            />
-            {validationError && <p className="text-red-500 text-sm mt-2">{validationError}</p>}
-            <button
-              type="submit"
-              className="w-full mt-4 py-4 rounded-2xl bg-violet-600 text-white text-lg font-bold active:bg-violet-700"
-            >
-              Check answer
-            </button>
-          </form>
+          {feedback ? (
+            <div className="mt-8" role="status" aria-live="polite">
+              <div className={`rounded-2xl p-5 ${feedback.correct ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+                <p className="text-4xl mb-2">{feedback.correct ? '🎉' : '💡'}</p>
+                <p className="text-xl font-extrabold">
+                  {feedback.correct ? 'Correct!' : 'Not quite'}
+                </p>
+                {!feedback.correct && (
+                  <p className="mt-1 font-semibold">The correct answer is {feedback.expectedAnswer}.</p>
+                )}
+              </div>
+              <button
+                type="button"
+                autoFocus
+                onClick={continuePractice}
+                className="w-full mt-4 py-4 rounded-2xl bg-violet-600 text-white text-lg font-bold active:bg-violet-700"
+              >
+                {currentIndex + 1 < questions.length ? 'Next question' : 'See results'}
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={submitAnswer} className="mt-8">
+              <label htmlFor="math-answer" className="sr-only">Your answer</label>
+              <input
+                id="math-answer"
+                type="number"
+                step="any"
+                inputMode="decimal"
+                autoFocus
+                value={answer}
+                onChange={(event) => setAnswer(event.target.value)}
+                placeholder="Your answer"
+                className="w-full rounded-2xl border-2 border-violet-200 px-4 py-4 text-center text-2xl font-bold outline-none focus:border-violet-500"
+              />
+              {validationError && <p className="text-red-500 text-sm mt-2">{validationError}</p>}
+              <button
+                type="submit"
+                className="w-full mt-4 py-4 rounded-2xl bg-violet-600 text-white text-lg font-bold active:bg-violet-700"
+              >
+                Check answer
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>
