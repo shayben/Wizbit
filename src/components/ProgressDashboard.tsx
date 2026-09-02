@@ -15,13 +15,18 @@ import {
 } from '../services/progressService';
 import { ALL_TROPHIES } from '../services/trophyService';
 import { loadCollectedStickers, type CollectedSticker } from '../services/stickerAlbumService';
+import {
+  computeMathSummary,
+  loadMathSessions,
+  type MathSessionRecord,
+} from '../services/mathService';
 
 interface ProgressDashboardProps {
   user: CurrentUser;
   onClose: () => void;
 }
 
-type Tab = 'history' | 'practice' | 'trophies' | 'stickers' | 'analytics';
+type Tab = 'history' | 'practice' | 'math' | 'trophies' | 'stickers' | 'analytics';
 
 /** Simple skeleton placeholder bar. */
 const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
@@ -84,6 +89,7 @@ const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) 
   const [practiceWords, setPracticeWords] = useState<PracticeWord[]>([]);
   const [earnedTrophies, setEarnedTrophies] = useState<EarnedTrophy[]>([]);
   const [collectedStickers, setCollectedStickers] = useState<CollectedSticker[]>([]);
+  const [mathSessions, setMathSessions] = useState<MathSessionRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -91,16 +97,18 @@ const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) 
     setLoading(true);
     setLoadError(null);
     try {
-      const [s, p, t, stickers] = await Promise.all([
+      const [s, p, t, stickers, math] = await Promise.all([
         loadSessions(user.uid),
         loadPracticeWords(user.uid),
         loadTrophies(user.uid),
         loadCollectedStickers(user.uid),
+        loadMathSessions(user.uid),
       ]);
       setSessions(s);
       setPracticeWords(p);
       setEarnedTrophies(t);
       setCollectedStickers(stickers);
+      setMathSessions(math);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load progress data');
     } finally {
@@ -111,6 +119,7 @@ const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) 
   useEffect(() => { reload(); }, [reload]);
 
   const earnedIds = new Set(earnedTrophies.map((t) => t.id));
+  const mathSummary = computeMathSummary(mathSessions);
 
   function formatDate(iso: string) {
     try {
@@ -149,6 +158,10 @@ const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) 
           <p className="text-xs md:text-sm text-gray-400">Sessions</p>
         </div>
         <div className="flex-shrink-0 bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 text-center min-w-[80px]">
+          <p className="text-2xl md:text-3xl font-extrabold text-violet-600">{mathSummary.questionsAnswered}</p>
+          <p className="text-xs md:text-sm text-gray-400">Math Qs</p>
+        </div>
+        <div className="flex-shrink-0 bg-white rounded-2xl border border-gray-100 shadow-sm px-4 py-3 text-center min-w-[80px]">
           <p className="text-2xl md:text-3xl font-extrabold text-amber-500">{earnedIds.size}</p>
           <p className="text-xs md:text-sm text-gray-400">Trophies</p>
         </div>
@@ -172,12 +185,12 @@ const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) 
 
       {/* Tabs */}
       <div className="flex gap-1 px-4 md:px-6 max-w-lg md:max-w-2xl mx-auto w-full">
-        {(['history', 'practice', 'trophies', 'stickers', 'analytics'] as Tab[]).map((t) => {
+        {(['history', 'practice', 'math', 'trophies', 'stickers', 'analytics'] as Tab[]).map((t) => {
           const icons: Record<Tab, string> = {
-            history: '📅', practice: '🔁', trophies: '🏆', stickers: '🖼️', analytics: '📊',
+            history: '📅', practice: '🔁', math: '🧮', trophies: '🏆', stickers: '🖼️', analytics: '📊',
           };
           const labels: Record<Tab, string> = {
-            history: 'History', practice: 'Practice', trophies: 'Trophies', stickers: 'Stickers', analytics: 'Stats',
+            history: 'History', practice: 'Practice', math: 'Math', trophies: 'Trophies', stickers: 'Stickers', analytics: 'Stats',
           };
           return (
             <button
@@ -202,7 +215,7 @@ const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) 
         {loading ? (
           <div className="flex flex-col gap-3">
             {/* Skeleton loading state */}
-            {tab === 'history' || tab === 'analytics' ? (
+            {tab === 'history' || tab === 'analytics' || tab === 'math' ? (
               <>
                 <SessionSkeleton />
                 <SessionSkeleton />
@@ -409,6 +422,65 @@ const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) 
                       </div>
                     ))}
                   </div>
+                </div>
+              )
+            )}
+
+            {/* ── Math tab ── */}
+            {tab === 'math' && (
+              mathSessions.length === 0 ? (
+                <p className="text-center text-gray-400 text-sm md:text-base py-10">
+                  Complete a math practice to see accuracy and response history.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="bg-white rounded-2xl border border-violet-100 p-3 text-center">
+                      <p className="text-xl font-extrabold text-violet-700">{mathSummary.accuracy}%</p>
+                      <p className="text-xs text-gray-400">Accuracy</p>
+                    </div>
+                    <div className="bg-white rounded-2xl border border-violet-100 p-3 text-center">
+                      <p className="text-xl font-extrabold text-violet-700">{mathSummary.correctAnswers}</p>
+                      <p className="text-xs text-gray-400">Correct</p>
+                    </div>
+                    <div className="bg-white rounded-2xl border border-violet-100 p-3 text-center">
+                      <p className="text-xl font-extrabold text-violet-700">
+                        {(mathSummary.averageResponseMs / 1000).toFixed(1)}s
+                      </p>
+                      <p className="text-xs text-gray-400">Avg time</p>
+                    </div>
+                  </div>
+                  {mathSessions.map((session) => {
+                    const missed = session.responses.filter((response) => !response.correct);
+                    return (
+                      <div key={session.id} className="bg-white rounded-2xl border border-violet-100 shadow-sm p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-bold text-gray-800">{session.skillName}</p>
+                            <p className="text-xs text-gray-400">
+                              Grade {session.grade} · {formatDate(session.date)} · {(session.averageResponseMs / 1000).toFixed(1)}s average
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xl font-extrabold text-violet-700">{session.accuracy}%</p>
+                            <p className="text-xs text-gray-400">{session.correctCount}/{session.questionCount}</p>
+                          </div>
+                        </div>
+                        {missed.length > 0 && (
+                          <div className="mt-3 pt-3 border-t border-gray-100">
+                            <p className="text-xs font-semibold text-gray-500 mb-2">Review missed questions</p>
+                            <div className="flex flex-wrap gap-2">
+                              {missed.map((response, index) => (
+                                <span key={`${response.question}-${index}`} className="text-xs bg-red-50 text-red-700 rounded-lg px-2 py-1">
+                                  {response.question.replace('?', '')} {response.studentAnswer} (answer: {response.expectedAnswer})
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )
             )}
