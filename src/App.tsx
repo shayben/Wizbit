@@ -6,6 +6,7 @@ import UserHeader from './components/UserHeader';
 import ProgressDashboard from './components/ProgressDashboard';
 import StoryLibrary from './components/StoryLibrary';
 import AskHelper from './components/AskHelper';
+import MathPracticeMode from './components/MathPracticeMode';
 import { recognizeText } from './services/ocrService';
 import { extractFromEbook } from './services/ebookService';
 import { readingLevels } from './data/demoParagraphs';
@@ -192,6 +193,11 @@ export default function App() {
     );
   }
 
+  // ── K–5 math practice ──
+  if (step === 'math') {
+    return <MathPracticeMode uid={user?.uid} onExit={goHome} />;
+  }
+
   // ── Home: camera button + demo levels ──
   if (step === 'home') {
     return (
@@ -306,6 +312,20 @@ export default function App() {
             </button>
           ))}
         </div>
+
+        {/* Math practice shortcut */}
+        <button
+          type="button"
+          onClick={() => navigate('math')}
+          className="w-full max-w-xs md:max-w-md py-4 md:py-5 rounded-2xl
+                     bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white
+                     font-bold text-lg md:text-xl shadow-md active:scale-[0.98] transition-transform"
+        >
+          🧮 Practice Math
+          <span className="block text-xs md:text-sm font-medium text-violet-100 mt-1">
+            Kindergarten through Grade 5
+          </span>
+        </button>
 
         {/* My Stories shortcut */}
         <button
