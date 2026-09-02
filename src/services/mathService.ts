@@ -45,6 +45,13 @@ export interface MathProgressSummary {
   averageResponseMs: number;
 }
 
+export interface MathBuddy {
+  id: string;
+  name: string;
+  emoji: string;
+  requiredCorrect: number;
+}
+
 export const MATH_GRADES: Array<{ grade: MathGrade; label: string; emoji: string }> = [
   { grade: 'K', label: 'Kindergarten', emoji: '🐣' },
   { grade: '1', label: 'Grade 1', emoji: '🌱' },
@@ -69,7 +76,34 @@ export const MATH_SKILLS: MathSkill[] = [
   { id: 'order-operations', grade: '5', name: 'Order of Operations', description: 'Multiply before adding or subtracting', emoji: '🧠' },
 ];
 
+export const MATH_BUDDIES: MathBuddy[] = [
+  { id: 'pixel', name: 'Pixel the Fox', emoji: '🦊', requiredCorrect: 3 },
+  { id: 'nova', name: 'Nova the Dragon', emoji: '🐉', requiredCorrect: 6 },
+  { id: 'cosmo', name: 'Cosmo the Unicorn', emoji: '🦄', requiredCorrect: 10 },
+];
+
 const LS_MATH_SESSIONS = (uid: string) => `ra_math_sessions_${uid}`;
+const LS_MATH_BUDDIES = (uid: string) => `ra_math_buddies_${uid}`;
+
+export function getUnlockedMathBuddyIds(uid: string | null | undefined): string[] {
+  try {
+    const stored = JSON.parse(localStorage.getItem(LS_MATH_BUDDIES(uid || 'anon')) ?? '[]');
+    return Array.isArray(stored)
+      ? stored.filter((id): id is string => typeof id === 'string' && MATH_BUDDIES.some((buddy) => buddy.id === id))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function unlockMathBuddy(uid: string | null | undefined, buddyId: string): void {
+  if (!MATH_BUDDIES.some((buddy) => buddy.id === buddyId)) return;
+  const unlockedIds = getUnlockedMathBuddyIds(uid);
+  if (unlockedIds.includes(buddyId)) return;
+  try {
+    localStorage.setItem(LS_MATH_BUDDIES(uid || 'anon'), JSON.stringify([...unlockedIds, buddyId]));
+  } catch { /* localStorage unavailable or full */ }
+}
 
 function randomInt(min: number, max: number, random: () => number): number {
   return Math.floor(random() * (max - min + 1)) + min;

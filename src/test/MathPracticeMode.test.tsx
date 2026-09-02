@@ -6,11 +6,14 @@ vi.mock('../services/mathService', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../services/mathService')>();
   return {
     ...actual,
+    MATH_BUDDIES: [{ id: 'pixel', name: 'Pixel the Fox', emoji: '🦊', requiredCorrect: 1 }],
     generateMathQuestions: () => [
       { id: 'first', prompt: '2 + 2 = ?', answer: 4 },
       { id: 'second', prompt: '3 + 3 = ?', answer: 6 },
     ],
+    getUnlockedMathBuddyIds: () => [],
     saveMathSession: vi.fn(),
+    unlockMathBuddy: vi.fn(),
   };
 });
 
@@ -31,6 +34,9 @@ describe('MathPracticeMode', () => {
     fireEvent.change(screen.getByLabelText('Your answer'), { target: { value: '4' } });
     fireEvent.click(screen.getByRole('button', { name: 'Check answer' }));
 
+    expect(screen.getByRole('dialog')).toHaveTextContent('New math buddy unlocked!');
+    expect(screen.getByRole('dialog')).toHaveTextContent('Pixel the Fox');
+    fireEvent.click(screen.getByRole('button', { name: 'Keep going!' }));
     expect(screen.getByRole('status')).toHaveTextContent('Correct!');
     expect(screen.getByText('2 + 2 = ?')).toBeInTheDocument();
     expect(screen.getByText('1 / 2')).toBeInTheDocument();

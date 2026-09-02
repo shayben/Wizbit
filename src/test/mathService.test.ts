@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   MATH_GRADES,
+  MATH_BUDDIES,
   MATH_SKILLS,
   computeMathSummary,
   generateMathQuestions,
+  getUnlockedMathBuddyIds,
   loadMathSessions,
   saveMathSession,
+  unlockMathBuddy,
   type MathSessionRecord,
 } from '../services/mathService';
 
@@ -113,5 +116,13 @@ describe('math progress', () => {
     await saveMathSession(undefined, record);
 
     await expect(loadMathSessions(undefined)).resolves.toEqual([record]);
+  });
+
+  it('persists unique math buddy unlocks and ignores unknown buddies', () => {
+    unlockMathBuddy(undefined, MATH_BUDDIES[0].id);
+    unlockMathBuddy(undefined, MATH_BUDDIES[0].id);
+    unlockMathBuddy(undefined, 'unknown');
+
+    expect(getUnlockedMathBuddyIds(undefined)).toEqual([MATH_BUDDIES[0].id]);
   });
 });
