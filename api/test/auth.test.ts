@@ -7,6 +7,21 @@ describe('admin identity', () => {
     config.auth.adminEmails.clear();
   });
 
+  it('grants admin access to the default admin accounts', () => {
+    for (const email of [
+      'Shaybenelazar@hotmail.com',
+      'Shay.benel@gmail.com',
+      'Shbenela@microsoft.com',
+    ]) {
+      expect(isAdminCaller({
+        uid: `user:${email}`,
+        provider: 'microsoft',
+        email,
+        shortId: 'admin',
+      })).toBe(true);
+    }
+  });
+
   it('matches configured admin emails case-insensitively', () => {
     config.auth.adminEmails.add('admin@example.com');
     expect(isAdminCaller({
