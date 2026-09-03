@@ -65,7 +65,7 @@ export default function App() {
 
     if (!stream) {
       setError('Unable to access camera. Please allow camera permissions.');
-      goHome();
+      navigate('reading-home');
       return;
     }
 
@@ -74,7 +74,7 @@ export default function App() {
       videoRef.current.srcObject = stream;
       try { await videoRef.current.play(); } catch { /* safe to ignore */ }
     }
-  }, [navigate, goHome]);
+  }, [navigate]);
 
   const capture = useCallback(async () => {
     const video = videoRef.current;
@@ -98,13 +98,13 @@ export default function App() {
         navigate('reading');
       } else {
         setError('No text found — try again with clearer text.');
-        goHome();
+        navigate('reading-home');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      goHome();
+      navigate('reading-home');
     }
-  }, [stopCamera, navigate, goHome]);
+  }, [stopCamera, navigate]);
 
   const handleReset = useCallback(() => {
     stopCamera();
@@ -113,8 +113,8 @@ export default function App() {
     setError(null);
     setDemoLevel(null);
     setResumeStory(null);
-    goHome();
-  }, [stopCamera, goHome]);
+    navigate('reading-home');
+  }, [stopCamera, navigate]);
 
   const handleEbookFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -132,13 +132,13 @@ export default function App() {
         navigate('reading');
       } else {
         setError('No readable text found in this file — please try another.');
-        goHome();
+        navigate('reading-home');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      goHome();
+      navigate('reading-home');
     }
-  }, [navigate, goHome]);
+  }, [navigate]);
 
   const handleDemoLevel = useCallback((level: ReadingLevel) => {
     setDemoLevel(level);
@@ -198,8 +198,45 @@ export default function App() {
     return <MathPracticeMode uid={user?.uid} onExit={goHome} />;
   }
 
-  // ── Home: camera button + demo levels ──
+  // ── Home: choose a learning area ──
   if (step === 'home') {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white flex flex-col items-center gap-7 p-6 pt-12 md:pt-16">
+        <h1 className="text-3xl md:text-4xl font-bold text-indigo-700">🧙 Wizbit</h1>
+        {user && (
+          <UserHeader
+            user={user}
+            onOpenDashboard={() => navigate('dashboard')}
+            onSignOut={signOut}
+          />
+        )}
+        {error && <p className="text-red-600 text-sm text-center bg-red-50 rounded-xl p-3 max-w-md">{error}</p>}
+        <div className="w-full max-w-2xl grid md:grid-cols-2 gap-5">
+          <button
+            type="button"
+            onClick={() => navigate('reading-home')}
+            className="min-h-56 rounded-3xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white p-7 text-left shadow-lg active:scale-[0.98] transition-transform"
+          >
+            <span className="text-6xl" aria-hidden="true">📖</span>
+            <span className="block text-3xl font-extrabold mt-5">Reading</span>
+            <span className="block text-indigo-100 mt-2">Scan a page, read a story, or create an adventure.</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('math')}
+            className="min-h-56 rounded-3xl bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white p-7 text-left shadow-lg active:scale-[0.98] transition-transform"
+          >
+            <span className="text-6xl" aria-hidden="true">🧮</span>
+            <span className="block text-3xl font-extrabold mt-5">Math</span>
+            <span className="block text-violet-100 mt-2">Build skills with practice chosen for your progress.</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Reading home: camera button + demo levels ──
+  if (step === 'reading-home') {
     return (
       <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white flex flex-col items-center gap-6 md:gap-8 p-6 pt-12 md:pt-16">
         <canvas ref={canvasRef} className="hidden" />
@@ -211,16 +248,11 @@ export default function App() {
           className="hidden"
           onChange={handleEbookFile}
         />
-        <h1 className="text-3xl md:text-4xl font-bold text-indigo-700">🧙 Wizbit</h1>
-
-        {/* User header (SSO) */}
-        {user && (
-          <UserHeader
-            user={user}
-            onOpenDashboard={() => navigate('dashboard')}
-            onSignOut={signOut}
-          />
-        )}
+        <div className="w-full max-w-lg flex items-center">
+          <button type="button" onClick={goHome} className="text-indigo-500 font-semibold">← Learning areas</button>
+          <h1 className="flex-1 text-center text-3xl md:text-4xl font-bold text-indigo-700">📖 Reading</h1>
+          <div className="w-28" />
+        </div>
 
         {error && (
           <p className="text-red-600 text-sm text-center bg-red-50 rounded-xl p-3 max-w-xs md:max-w-md">{error}</p>
@@ -312,20 +344,6 @@ export default function App() {
             </button>
           ))}
         </div>
-
-        {/* Math practice shortcut */}
-        <button
-          type="button"
-          onClick={() => navigate('math')}
-          className="w-full max-w-xs md:max-w-md py-4 md:py-5 rounded-2xl
-                     bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white
-                     font-bold text-lg md:text-xl shadow-md active:scale-[0.98] transition-transform"
-        >
-          🧮 Practice Math
-          <span className="block text-xs md:text-sm font-medium text-violet-100 mt-1">
-            Kindergarten through Grade 5
-          </span>
-        </button>
 
         {/* My Stories shortcut */}
         <button

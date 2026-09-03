@@ -5,8 +5,10 @@ import {
   MATH_SKILLS,
   computeMathSummary,
   generateMathQuestions,
+  getMathSkillProgress,
   getUnlockedMathBuddyIds,
   loadMathSessions,
+  recommendMathSkill,
   saveMathSession,
   unlockMathBuddy,
   type MathSessionRecord,
@@ -44,10 +46,10 @@ function session(overrides: Partial<MathSessionRecord> = {}): MathSessionRecord 
 }
 
 describe('math curriculum', () => {
-  it('offers at least two skills for every K-5 grade', () => {
+  it('offers at least three skills for every K-5 grade', () => {
     expect(MATH_GRADES.map(({ grade }) => grade)).toEqual(['K', '1', '2', '3', '4', '5']);
     for (const { grade } of MATH_GRADES) {
-      expect(MATH_SKILLS.filter((skill) => skill.grade === grade).length).toBeGreaterThanOrEqual(2);
+      expect(MATH_SKILLS.filter((skill) => skill.grade === grade).length).toBeGreaterThanOrEqual(3);
     }
   });
 
@@ -64,6 +66,7 @@ describe('math curriculum', () => {
       const questions = generateMathQuestions(skill.id, 4, () => 0.25);
       expect(questions).toHaveLength(4);
       expect(questions.every((question) => Number.isFinite(question.answer))).toBe(true);
+      expect(questions.every((question) => question.tip.length > 20)).toBe(true);
     }
   });
 
@@ -124,5 +127,22 @@ describe('math progress', () => {
     unlockMathBuddy(undefined, 'unknown');
 
     expect(getUnlockedMathBuddyIds(undefined)).toEqual([MATH_BUDDIES[0].id]);
+  });
+
+  it('tracks recent mastery and recommends the next challenge after success', () => {
+    const mastered = session({ grade: '3', skillId: 'multiply-10', accuracy: 90 });
+
+    expect(getMathSkillProgress('multiply-10', [mastered])).toMatchObject({
+      attempts: 1,
+      accuracy: 90,
+      status: 'mastered',
+    });
+    expect(recommendMathSkill('3', [mastered]).id).toBe('divide-10');
+  });
+
+  it('steps back to a foundation skill when recent accuracy is low', () => {
+    const needsSupport = session({ grade: '3', skillId: 'divide-10', accuracy: 30 });
+
+    expect(recommendMathSkill('3', [needsSupport]).id).toBe('multiply-10');
   });
 });

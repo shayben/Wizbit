@@ -1,16 +1,20 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   MATH_GRADES,
   MATH_BUDDIES,
   MATH_SKILLS,
   generateMathQuestions,
+  getMathSkillProgress,
   getUnlockedMathBuddyIds,
+  loadMathSessions,
+  recommendMathSkill,
   saveMathSession,
   unlockMathBuddy,
   type MathBuddy,
   type MathGrade,
   type MathQuestion,
   type MathResponse,
+  type MathSessionRecord,
 } from '../services/mathService';
 
 interface MathPracticeModeProps {
@@ -32,6 +36,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
   const [unlockedBuddyIds, setUnlockedBuddyIds] = useState<string[]>(() => getUnlockedMathBuddyIds(uid));
   const [newBuddy, setNewBuddy] = useState<MathBuddy | null>(null);
   const [validationError, setValidationError] = useState('');
+  const [pastSessions, setPastSessions] = useState<MathSessionRecord[]>([]);
   const questionStartedAt = useRef(0);
 
   const selectedSkill = MATH_SKILLS.find((skill) => skill.id === skillId);
@@ -40,6 +45,20 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
   const accuracy = responses.length === 0 ? 0 : Math.round((correctCount / responses.length) * 100);
   const correctStreak = [...responses].reverse().findIndex((response) => !response.correct);
   const activeStreak = correctStreak === -1 ? responses.length : correctStreak;
+  const recommendedSkill = grade ? recommendMathSkill(grade, pastSessions) : null;
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadMathSessions(uid).then((sessions) => {
+      if (!cancelled) {
+        setPastSessions((current) => [
+          ...current,
+          ...sessions.filter((loaded) => !current.some((existing) => existing.id === loaded.id)),
+        ]);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [uid]);
 
   function chooseGrade(selectedGrade: MathGrade) {
     setGrade(selectedGrade);
@@ -108,7 +127,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
       responses.reduce((sum, item) => sum + item.responseMs, 0) / responses.length,
     );
     const now = new Date();
-    void saveMathSession(uid, {
+    const record: MathSessionRecord = {
       id: `${uid || 'anon'}_math_${now.getTime()}`,
       date: now.toISOString(),
       grade,
@@ -119,7 +138,9 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
       questionCount: responses.length,
       averageResponseMs,
       responses,
-    });
+    };
+    setPastSessions((sessions) => [record, ...sessions]);
+    void saveMathSession(uid, record);
     setPhase('results');
   }
 
@@ -180,20 +201,34 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
           <h2 className="text-xl md:text-2xl font-bold text-gray-800">
             {gradeLabel?.emoji} {gradeLabel?.label}
           </h2>
-          <p className="text-gray-400 mt-1 mb-6">Pick a skill for a 10-question practice</p>
+          <p className="text-gray-400 mt-1 mb-6">Your next best skill is highlighted, but you can choose any topic.</p>
           <div className="grid md:grid-cols-2 gap-3">
-            {MATH_SKILLS.filter((skill) => skill.grade === grade).map((skill) => (
-              <button
-                key={skill.id}
-                type="button"
-                onClick={(event) => startPractice(skill.id, event.timeStamp)}
-                className="text-left bg-white border border-violet-100 rounded-2xl p-5 shadow-sm active:bg-violet-50 transition-colors"
-              >
-                <span className="text-3xl">{skill.emoji}</span>
-                <span className="block font-bold text-violet-700 text-lg mt-2">{skill.name}</span>
-                <span className="block text-gray-500 text-sm mt-1">{skill.description}</span>
-              </button>
-            ))}
+            {MATH_SKILLS.filter((skill) => skill.grade === grade).map((skill) => {
+              const progress = getMathSkillProgress(skill.id, pastSessions);
+              const isRecommended = skill.id === recommendedSkill?.id;
+              return (
+                <button
+                  key={skill.id}
+                  type="button"
+                  onClick={(event) => startPractice(skill.id, event.timeStamp)}
+                  className={`text-left bg-white rounded-2xl p-5 shadow-sm active:bg-violet-50 transition-colors ${
+                    isRecommended ? 'border-2 border-violet-500 ring-2 ring-violet-100' : 'border border-violet-100'
+                  }`}
+                >
+                  <span className="flex items-center justify-between">
+                    <span className="text-3xl">{skill.emoji}</span>
+                    {isRecommended && <span className="rounded-full bg-violet-100 text-violet-700 px-2 py-1 text-xs font-bold">Recommended</span>}
+                  </span>
+                  <span className="block font-bold text-violet-700 text-lg mt-2">{skill.name}</span>
+                  <span className="block text-gray-500 text-sm mt-1">{skill.description}</span>
+                  <span className={`block text-xs font-bold mt-3 ${
+                    progress.status === 'mastered' ? 'text-green-600' : progress.status === 'developing' ? 'text-amber-600' : 'text-gray-400'
+                  }`}>
+                    {progress.status === 'mastered' ? `✓ Mastered · ${progress.accuracy}%` : progress.status === 'developing' ? `Growing · ${progress.accuracy}%` : 'New skill'}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -202,6 +237,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
 
   if (phase === 'results') {
     const unlockedBuddies = MATH_BUDDIES.filter((buddy) => unlockedBuddyIds.includes(buddy.id));
+    const nextSkill = grade ? recommendMathSkill(grade, pastSessions) : null;
     return (
       <div className="min-h-screen bg-gradient-to-b from-violet-50 to-white flex items-center justify-center p-5">
         <div className="w-full max-w-md bg-white rounded-3xl border border-violet-100 shadow-lg p-7 text-center">
@@ -231,6 +267,18 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
             </div>
           </div>
           <div className="flex flex-col gap-3">
+            {nextSkill && (
+              <button
+                type="button"
+                onClick={(event) => startPractice(nextSkill.id, event.timeStamp)}
+                className="w-full py-4 px-3 rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white font-bold"
+              >
+                Recommended next: {nextSkill.name}
+                <span className="block text-xs text-violet-100 font-medium mt-1">
+                  {nextSkill.id === skillId ? 'Keep building this skill' : 'You are ready to level up'}
+                </span>
+              </button>
+            )}
             <button type="button" onClick={retry} className="w-full py-3 rounded-2xl bg-violet-600 text-white font-bold">
               Practice again
             </button>
@@ -295,7 +343,13 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
                   <p className="mt-1 font-semibold">🔥 {activeStreak} in a row!</p>
                 )}
                 {!feedback.correct && (
-                  <p className="mt-1 font-semibold">The correct answer is {feedback.expectedAnswer}.</p>
+                  <>
+                    <p className="mt-1 font-semibold">The correct answer is {feedback.expectedAnswer}.</p>
+                    <div className="mt-4 rounded-xl bg-white/70 p-4 text-left text-amber-900">
+                      <p className="text-xs font-extrabold uppercase tracking-wide">Try this strategy</p>
+                      <p className="mt-1 text-sm font-medium">{currentQuestion?.tip}</p>
+                    </div>
+                  </>
                 )}
               </div>
               <button
