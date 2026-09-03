@@ -24,6 +24,7 @@
 
     "AZURE_AD_TENANT_ID": "common",
     "GOOGLE_CLIENT_ID": "",
+    "ADMIN_UIDS": "",
     "ADMIN_EMAILS": "",
 
     "COSMOS_ENDPOINT": "",

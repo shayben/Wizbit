@@ -33,7 +33,7 @@ describe('PaywallModal', () => {
     render(<PaywallModal />);
 
     await expect(apiGet('/test')).rejects.toThrow('Quota exceeded for ocr');
-    const closeButton = await screen.findByRole('button', { name: 'Close quota notification' });
+    const closeButton = await screen.findByRole('button', { name: 'Dismiss quota notification' });
     fireEvent.click(closeButton);
 
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());

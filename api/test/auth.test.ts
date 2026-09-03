@@ -1,13 +1,29 @@
-import { describe, expect, it } from 'vitest';
-import { isAdminEmail } from '../src/lib/auth.js';
+import { afterEach, describe, expect, it } from 'vitest';
+import { isAdminCaller } from '../src/lib/auth.js';
+import { config } from '../src/lib/config.js';
 
 describe('admin identity', () => {
+  afterEach(() => {
+    config.auth.adminEmails.clear();
+  });
+
   it('matches configured admin emails case-insensitively', () => {
-    expect(isAdminEmail(' Admin@Example.com ', ['admin@example.com'])).toBe(true);
+    config.auth.adminEmails.add('admin@example.com');
+    expect(isAdminCaller({
+      uid: 'ms:admin-1',
+      provider: 'microsoft',
+      email: 'Admin@Example.com',
+      shortId: 'admin',
+    })).toBe(true);
   });
 
   it('does not grant admin access to unconfigured or missing emails', () => {
-    expect(isAdminEmail('other@example.com', ['admin@example.com'])).toBe(false);
-    expect(isAdminEmail(undefined, ['admin@example.com'])).toBe(false);
+    config.auth.adminEmails.add('admin@example.com');
+    expect(isAdminCaller({
+      uid: 'ms:user-1',
+      provider: 'microsoft',
+      email: 'other@example.com',
+      shortId: 'user',
+    })).toBe(false);
   });
 });

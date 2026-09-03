@@ -9,7 +9,7 @@
  * surfaces a `QuotaExceededError` triggers the modal automatically.
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { onQuotaExceeded, type QuotaErrorPayload, apiPost } from '../services/apiClient';
 
 const PURPOSE_COPY: Record<string, { title: string; line: string }> = {
@@ -56,9 +56,12 @@ export const PaywallModal: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dismissedEvents = useRef(new Set<string>());
 
   useEffect(() => {
     const off = onQuotaExceeded((payload) => {
+      const key = `${payload.purpose}:${payload.retryAt}`;
+      if (dismissedEvents.current.has(key)) return;
       setError(null);
       setSubmitted(false);
       setEvent(payload);
@@ -67,9 +70,10 @@ export const PaywallModal: React.FC = () => {
   }, []);
 
   const close = useCallback(() => {
+    if (event) dismissedEvents.current.add(`${event.purpose}:${event.retryAt}`);
     setEvent(null);
     setError(null);
-  }, []);
+  }, [event]);
 
   useEffect(() => {
     if (!event) return;
@@ -124,10 +128,10 @@ export const PaywallModal: React.FC = () => {
         <button
           type="button"
           onClick={close}
-          className="absolute top-3 right-3 flex h-11 w-11 items-center justify-center rounded-full text-2xl text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-          aria-label="Close quota notification"
+          aria-label="Dismiss quota notification"
+          className="absolute top-4 right-4 w-10 h-10 rounded-full bg-gray-100 text-gray-600 text-xl hover:bg-gray-200"
         >
-          ×
+          ✕
         </button>
         <div className="text-5xl mb-3 text-center">✨</div>
         <h2 id="paywall-title" className="text-2xl font-bold text-center text-gray-900 mb-2">
