@@ -22,6 +22,14 @@ describe('admin identity', () => {
     }
   });
 
+  it('grants admin access to default admin UIDs without an email claim', () => {
+    expect(isAdminCaller({
+      uid: 'google:114788041842846489858',
+      provider: 'google',
+      shortId: 'admin',
+    })).toBe(true);
+  });
+
   it('matches configured admin emails case-insensitively', () => {
     config.auth.adminEmails.add('admin@example.com');
     expect(isAdminCaller({

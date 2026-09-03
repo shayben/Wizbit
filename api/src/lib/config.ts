@@ -24,6 +24,10 @@ const DEFAULT_ADMIN_EMAILS = [
   'shbenela@microsoft.com',
 ];
 
+const DEFAULT_ADMIN_UIDS = [
+  'google:114788041842846489858',
+];
+
 export const config = {
   vision: {
     endpoint: envVal('AZURE_VISION_ENDPOINT')?.replace(/\/$/, ''),
@@ -53,7 +57,7 @@ export const config = {
   auth: {
     msTenantId: envVal('AZURE_AD_TENANT_ID') ?? 'common',
     googleClientId: envVal('GOOGLE_CLIENT_ID'),
-    adminUids: envSet('ADMIN_UIDS'),
+    adminUids: new Set([...DEFAULT_ADMIN_UIDS, ...envSet('ADMIN_UIDS')]),
     adminEmails: new Set([...DEFAULT_ADMIN_EMAILS, ...envSet('ADMIN_EMAILS', true)]),
   },
   cosmos: {
