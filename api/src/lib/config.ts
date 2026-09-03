@@ -18,6 +18,12 @@ function envSet(name: string, normalize = false): Set<string> {
   return new Set(values);
 }
 
+const DEFAULT_ADMIN_EMAILS = [
+  'shaybenelazar@hotmail.com',
+  'shay.benel@gmail.com',
+  'shbenela@microsoft.com',
+];
+
 export const config = {
   vision: {
     endpoint: envVal('AZURE_VISION_ENDPOINT')?.replace(/\/$/, ''),
@@ -48,7 +54,7 @@ export const config = {
     msTenantId: envVal('AZURE_AD_TENANT_ID') ?? 'common',
     googleClientId: envVal('GOOGLE_CLIENT_ID'),
     adminUids: envSet('ADMIN_UIDS'),
-    adminEmails: envSet('ADMIN_EMAILS', true),
+    adminEmails: new Set([...DEFAULT_ADMIN_EMAILS, ...envSet('ADMIN_EMAILS', true)]),
   },
   cosmos: {
     endpoint: envVal('COSMOS_ENDPOINT')?.replace(/\/$/, ''),
