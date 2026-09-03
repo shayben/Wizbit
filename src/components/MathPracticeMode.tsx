@@ -1,9 +1,13 @@
 import React, { useRef, useState } from 'react';
 import {
   MATH_GRADES,
+  MATH_BUDDIES,
   MATH_SKILLS,
   generateMathQuestions,
+  getUnlockedMathBuddyIds,
   saveMathSession,
+  unlockMathBuddy,
+  type MathBuddy,
   type MathGrade,
   type MathQuestion,
   type MathResponse,
@@ -24,6 +28,9 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answer, setAnswer] = useState('');
   const [responses, setResponses] = useState<MathResponse[]>([]);
+  const [feedback, setFeedback] = useState<MathResponse | null>(null);
+  const [unlockedBuddyIds, setUnlockedBuddyIds] = useState<string[]>(() => getUnlockedMathBuddyIds(uid));
+  const [newBuddy, setNewBuddy] = useState<MathBuddy | null>(null);
   const [validationError, setValidationError] = useState('');
   const questionStartedAt = useRef(0);
 
@@ -31,6 +38,8 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
   const currentQuestion = questions[currentIndex];
   const correctCount = responses.filter((response) => response.correct).length;
   const accuracy = responses.length === 0 ? 0 : Math.round((correctCount / responses.length) * 100);
+  const correctStreak = [...responses].reverse().findIndex((response) => !response.correct);
+  const activeStreak = correctStreak === -1 ? responses.length : correctStreak;
 
   function chooseGrade(selectedGrade: MathGrade) {
     setGrade(selectedGrade);
@@ -43,6 +52,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
     setCurrentIndex(0);
     setAnswer('');
     setResponses([]);
+    setFeedback(null);
     setValidationError('');
     questionStartedAt.current = startedAt;
     setPhase('practice');
@@ -50,7 +60,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
 
   function submitAnswer(event: React.FormEvent) {
     event.preventDefault();
-    if (!currentQuestion || !grade || !selectedSkill) return;
+    if (!currentQuestion || !grade || !selectedSkill || feedback) return;
 
     const studentAnswer = Number(answer);
     if (answer.trim() === '' || !Number.isFinite(studentAnswer)) {
@@ -67,19 +77,35 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
     };
     const nextResponses = [...responses, response];
     setResponses(nextResponses);
+    setFeedback(response);
+    if (response.correct) {
+      const nextCorrectCount = nextResponses.filter((item) => item.correct).length;
+      const buddy = MATH_BUDDIES.find(
+        (item) => item.requiredCorrect === nextCorrectCount && !unlockedBuddyIds.includes(item.id),
+      );
+      if (buddy) {
+        unlockMathBuddy(uid, buddy.id);
+        setUnlockedBuddyIds((ids) => [...ids, buddy.id]);
+        setNewBuddy(buddy);
+      }
+    }
     setAnswer('');
     setValidationError('');
+  }
 
+  function continuePractice(event: React.MouseEvent) {
+    if (!feedback || !grade || !selectedSkill) return;
     if (currentIndex + 1 < questions.length) {
       setCurrentIndex((index) => index + 1);
+      setFeedback(null);
       questionStartedAt.current = event.timeStamp;
       return;
     }
 
-    const finalCorrectCount = nextResponses.filter((item) => item.correct).length;
-    const finalAccuracy = Math.round((finalCorrectCount / nextResponses.length) * 100);
+    const finalCorrectCount = responses.filter((item) => item.correct).length;
+    const finalAccuracy = Math.round((finalCorrectCount / responses.length) * 100);
     const averageResponseMs = Math.round(
-      nextResponses.reduce((sum, item) => sum + item.responseMs, 0) / nextResponses.length,
+      responses.reduce((sum, item) => sum + item.responseMs, 0) / responses.length,
     );
     const now = new Date();
     void saveMathSession(uid, {
@@ -90,9 +116,9 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
       skillName: selectedSkill.name,
       accuracy: finalAccuracy,
       correctCount: finalCorrectCount,
-      questionCount: nextResponses.length,
+      questionCount: responses.length,
       averageResponseMs,
-      responses: nextResponses,
+      responses,
     });
     setPhase('results');
   }
@@ -175,6 +201,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
   }
 
   if (phase === 'results') {
+    const unlockedBuddies = MATH_BUDDIES.filter((buddy) => unlockedBuddyIds.includes(buddy.id));
     return (
       <div className="min-h-screen bg-gradient-to-b from-violet-50 to-white flex items-center justify-center p-5">
         <div className="w-full max-w-md bg-white rounded-3xl border border-violet-100 shadow-lg p-7 text-center">
@@ -186,6 +213,18 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
               <p className="text-3xl font-extrabold text-green-600">{correctCount}/{responses.length}</p>
               <p className="text-xs text-green-700">Correct</p>
             </div>
+            {unlockedBuddies.length > 0 && (
+              <div className="rounded-2xl bg-amber-50 p-4 mb-6">
+                <p className="text-xs font-bold uppercase tracking-wide text-amber-700">Your math buddies</p>
+                <div className="flex justify-center gap-3 mt-2">
+                  {unlockedBuddies.map((buddy) => (
+                    <span key={buddy.id} title={buddy.name} className="text-4xl" aria-label={buddy.name}>
+                      {buddy.emoji}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="rounded-2xl bg-violet-50 p-4">
               <p className="text-3xl font-extrabold text-violet-600">{accuracy}%</p>
               <p className="text-xs text-violet-700">Accuracy</p>
@@ -209,6 +248,26 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-violet-50 to-white p-5 md:p-10">
+      {newBuddy && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-violet-950/40 p-5 animate-fade-in">
+          <div role="dialog" aria-modal="true" aria-labelledby="buddy-unlocked-title" className="w-full max-w-sm rounded-3xl bg-white p-7 text-center shadow-2xl">
+            <div className="text-2xl mb-2" aria-hidden="true">✨ 🎉 ✨</div>
+            <div className="text-8xl animate-bounce" aria-hidden="true">{newBuddy.emoji}</div>
+            <h2 id="buddy-unlocked-title" className="text-2xl font-extrabold text-violet-700 mt-3">
+              New math buddy unlocked!
+            </h2>
+            <p className="text-gray-600 font-semibold mt-2">{newBuddy.name} is cheering you on.</p>
+            <button
+              type="button"
+              autoFocus
+              onClick={() => setNewBuddy(null)}
+              className="w-full mt-6 py-3 rounded-2xl bg-violet-600 text-white font-bold"
+            >
+              Keep going!
+            </button>
+          </div>
+        </div>
+      )}
       <div className="max-w-xl mx-auto">
         {header}
         <div className="flex items-center justify-between text-sm font-semibold text-violet-600 mb-2">
@@ -225,27 +284,52 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
           <p className="text-3xl md:text-5xl font-extrabold text-gray-800 min-h-16 flex items-center justify-center">
             {currentQuestion?.prompt}
           </p>
-          <form onSubmit={submitAnswer} className="mt-8">
-            <label htmlFor="math-answer" className="sr-only">Your answer</label>
-            <input
-              id="math-answer"
-              type="number"
-              step="any"
-              inputMode="decimal"
-              autoFocus
-              value={answer}
-              onChange={(event) => setAnswer(event.target.value)}
-              placeholder="Your answer"
-              className="w-full rounded-2xl border-2 border-violet-200 px-4 py-4 text-center text-2xl font-bold outline-none focus:border-violet-500"
-            />
-            {validationError && <p className="text-red-500 text-sm mt-2">{validationError}</p>}
-            <button
-              type="submit"
-              className="w-full mt-4 py-4 rounded-2xl bg-violet-600 text-white text-lg font-bold active:bg-violet-700"
-            >
-              Check answer
-            </button>
-          </form>
+          {feedback ? (
+            <div className="mt-8" role="status" aria-live="polite">
+              <div className={`rounded-2xl p-5 ${feedback.correct ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
+                <p className="text-4xl mb-2">{feedback.correct ? '🎉' : '💡'}</p>
+                <p className="text-xl font-extrabold">
+                  {feedback.correct ? 'Correct!' : 'Not quite'}
+                </p>
+                {feedback.correct && activeStreak >= 2 && (
+                  <p className="mt-1 font-semibold">🔥 {activeStreak} in a row!</p>
+                )}
+                {!feedback.correct && (
+                  <p className="mt-1 font-semibold">The correct answer is {feedback.expectedAnswer}.</p>
+                )}
+              </div>
+              <button
+                type="button"
+                autoFocus
+                onClick={continuePractice}
+                className="w-full mt-4 py-4 rounded-2xl bg-violet-600 text-white text-lg font-bold active:bg-violet-700"
+              >
+                {currentIndex + 1 < questions.length ? 'Next question' : 'See results'}
+              </button>
+            </div>
+          ) : (
+            <form onSubmit={submitAnswer} className="mt-8">
+              <label htmlFor="math-answer" className="sr-only">Your answer</label>
+              <input
+                id="math-answer"
+                type="number"
+                step="any"
+                inputMode="decimal"
+                autoFocus
+                value={answer}
+                onChange={(event) => setAnswer(event.target.value)}
+                placeholder="Your answer"
+                className="w-full rounded-2xl border-2 border-violet-200 px-4 py-4 text-center text-2xl font-bold outline-none focus:border-violet-500"
+              />
+              {validationError && <p className="text-red-500 text-sm mt-2">{validationError}</p>}
+              <button
+                type="submit"
+                className="w-full mt-4 py-4 rounded-2xl bg-violet-600 text-white text-lg font-bold active:bg-violet-700"
+              >
+                Check answer
+              </button>
+            </form>
+          )}
         </div>
       </div>
     </div>
