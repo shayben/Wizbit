@@ -19,6 +19,7 @@ import { isGoogleConfigured } from '../services/googleAuthService';
 import { setAuthTokenProvider, type AuthTokenInfo } from '../services/apiClient';
 
 const PROVIDER_KEY = 'wizbit:auth-provider';
+const MICROSOFT_ACCOUNT_KEY = 'wizbit:microsoft-account';
 const GOOGLE_USER_KEY = 'wizbit:google-user';
 const GOOGLE_TOKEN_KEY = 'wizbit:google-token';
 
@@ -101,7 +102,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const accounts = msalInstance.getAllAccounts();
       if (accounts.length === 0) return false;
 
-      const account = accounts[0];
+      const savedAccountId = localStorage.getItem(MICROSOFT_ACCOUNT_KEY);
+      const account = accounts.find((candidate) => candidate.homeAccountId === savedAccountId)
+        ?? msalInstance.getActiveAccount()
+        ?? accounts[0];
+      msalInstance.setActiveAccount(account);
+      localStorage.setItem(MICROSOFT_ACCOUNT_KEY, account.homeAccountId);
       try {
         const result = await msalInstance.acquireTokenSilent({ account, scopes: LOGIN_SCOPES });
         const photoURL = await fetchMsGraphPhoto(result.accessToken);
@@ -150,8 +156,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const result = await msalInstance.loginPopup({ scopes: LOGIN_SCOPES });
       const photoURL = await fetchMsGraphPhoto(result.accessToken);
       const u = msalAccountToUser(result.account, photoURL);
+      msalInstance.setActiveAccount(result.account);
       setUser(u);
       localStorage.setItem(PROVIDER_KEY, 'microsoft');
+      localStorage.setItem(MICROSOFT_ACCOUNT_KEY, result.account.homeAccountId);
     } catch {
       // User cancelled popup
     }
@@ -184,14 +192,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const provider = user?.provider;
+    const microsoftAccount = provider === 'microsoft' && msalInstance
+      ? msalInstance.getAllAccounts().find((account) => account.homeAccountId === user.uid)
+      : null;
     setUser(null);
     localStorage.removeItem(PROVIDER_KEY);
+    localStorage.removeItem(MICROSOFT_ACCOUNT_KEY);
     localStorage.removeItem(GOOGLE_USER_KEY);
     localStorage.removeItem(GOOGLE_TOKEN_KEY);
 
     if (provider === 'microsoft' && msalInstance) {
-      const account = msalInstance.getAllAccounts()[0];
-      await msalInstance.logoutPopup({ account }).catch(() => {});
+      await msalInstance.clearCache({ account: microsoftAccount ?? undefined }).catch(() => {});
     }
     // Google: clearing stored user info is sufficient; no server-side logout needed
   }, [user]);
@@ -205,8 +216,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!u) return null;
       if (u.provider === 'microsoft' && msalInstance) {
         try {
-          const account = msalInstance.getAllAccounts()[0];
+          const account = msalInstance.getAllAccounts()
+            .find((candidate) => candidate.homeAccountId === u.uid);
           if (!account) return null;
+          msalInstance.setActiveAccount(account);
           const result = await msalInstance.acquireTokenSilent({ account, scopes: LOGIN_SCOPES });
           // Backend verifies signature + issuer; idToken's audience matches
           // our app registration which is what we want for caller identity.
