@@ -8,7 +8,7 @@
  */
 
 import { app, type HttpRequest, type HttpResponseInit, type InvocationContext } from '@azure/functions';
-import { resolveCaller } from '../lib/auth.js';
+import { isAdminCaller, resolveCaller } from '../lib/auth.js';
 import { getUsageSnapshot } from '../lib/quota.js';
 import { ok } from '../lib/http.js';
 
@@ -25,6 +25,14 @@ app.http('usage', {
       ip,
     });
     const snapshot = await getUsageSnapshot(caller);
-    return ok({ provider: caller.provider, ...snapshot });
+    return ok({
+      account: {
+        uid: caller.uid,
+        email: caller.email ?? null,
+        provider: caller.provider,
+        isAdmin: isAdminCaller(caller),
+      },
+      ...snapshot,
+    });
   },
 });

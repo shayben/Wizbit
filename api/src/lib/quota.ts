@@ -16,7 +16,7 @@
 
 import { getCosmos } from './cosmos.js';
 import { config } from './config.js';
-import type { Caller } from './auth.js';
+import { isAdminCaller, type Caller } from './auth.js';
 
 export type Purpose =
   | 'ocr'
@@ -29,7 +29,7 @@ export type Purpose =
   | 'transcribe'
   | 'word-helper';
 
-export type Plan = 'free' | 'trialing' | 'premium' | 'past_due' | 'canceled';
+export type Plan = 'free' | 'trialing' | 'premium' | 'past_due' | 'canceled' | 'admin';
 
 interface PlanLimits {
   /** Maximum units per UTC day. */
@@ -71,12 +71,17 @@ const FREE_LIMITS: PlanLimits = {
   'word-helper': 20,
 };
 
+const ADMIN_LIMITS: PlanLimits = Object.fromEntries(
+  Object.keys(FREE_LIMITS).map((purpose) => [purpose, Number.MAX_SAFE_INTEGER]),
+) as unknown as PlanLimits;
+
 export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
   free: FREE_LIMITS,
   trialing: PREMIUM_LIMITS,
   premium: PREMIUM_LIMITS,
   past_due: FREE_LIMITS,
   canceled: FREE_LIMITS,
+  admin: ADMIN_LIMITS,
 };
 
 export function planForCaller(planRaw: string | undefined): Plan {
@@ -85,6 +90,7 @@ export function planForCaller(planRaw: string | undefined): Plan {
     case 'premium':
     case 'past_due':
     case 'canceled':
+    case 'admin':
       return planRaw;
     default:
       return 'free';
@@ -187,7 +193,7 @@ export async function charge(
   amount = 1,
 ): Promise<ChargeResult | ChargeDenied> {
   const date = utcDate();
-  const plan = await loadUserPlan(caller.uid);
+  const plan = isAdminCaller(caller) ? 'admin' : await loadUserPlan(caller.uid);
   const baseLimit = PLAN_LIMITS[plan][purpose];
   const limit = caller.provider === 'anonymous'
     ? Math.max(0, Math.floor(baseLimit * config.policy.anonymousMultiplier))
@@ -233,7 +239,7 @@ export async function getUsageSnapshot(caller: Caller): Promise<{
   counters: Record<Purpose, { used: number; limit: number }>;
 }> {
   const date = utcDate();
-  const plan = await loadUserPlan(caller.uid);
+  const plan = isAdminCaller(caller) ? 'admin' : await loadUserPlan(caller.uid);
   const doc = await loadUsage(caller.uid, date);
   const limits = PLAN_LIMITS[plan];
   const result: Record<string, { used: number; limit: number }> = {};

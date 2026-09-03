@@ -9,6 +9,15 @@ function envVal(name: string): string | undefined {
   return v && v.trim() !== '' ? v.trim() : undefined;
 }
 
+function envSet(name: string, normalize = false): Set<string> {
+  const values = (envVal(name) ?? '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map((value) => normalize ? value.toLowerCase() : value);
+  return new Set(values);
+}
+
 export const config = {
   vision: {
     endpoint: envVal('AZURE_VISION_ENDPOINT')?.replace(/\/$/, ''),
@@ -38,6 +47,8 @@ export const config = {
   auth: {
     msTenantId: envVal('AZURE_AD_TENANT_ID') ?? 'common',
     googleClientId: envVal('GOOGLE_CLIENT_ID'),
+    adminUids: envSet('ADMIN_UIDS'),
+    adminEmails: envSet('ADMIN_EMAILS', true),
   },
   cosmos: {
     endpoint: envVal('COSMOS_ENDPOINT')?.replace(/\/$/, ''),
