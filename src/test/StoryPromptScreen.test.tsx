@@ -15,17 +15,17 @@ describe('StoryPromptScreen', () => {
     const onStart = vi.fn();
     render(<StoryPromptScreen {...defaultProps} onStart={onStart} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Magic' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Mystery' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Ocean' }));
+    fireEvent.click(screen.getByRole('button', { name: /Magic/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Mystery/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Ocean/ }));
 
-    const prompt = screen.getByRole('textbox');
-    expect(prompt).toHaveValue(expect.stringContaining('young wizard'));
-    expect(prompt).toHaveValue(expect.stringContaining('young detective'));
-    expect(prompt).toHaveValue(expect.stringContaining('mermaid'));
-    expect(screen.getByRole('button', { name: 'Magic' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Mystery' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Ocean' })).toHaveAttribute('aria-pressed', 'true');
+    const prompt = screen.getByRole<HTMLTextAreaElement>('textbox');
+    expect(prompt.value).toContain('young wizard');
+    expect(prompt.value).toContain('young detective');
+    expect(prompt.value).toContain('mermaid');
+    expect(screen.getByRole('button', { name: /Magic/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /Mystery/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: /Ocean/ })).toHaveAttribute('aria-pressed', 'true');
 
     fireEvent.click(screen.getByRole('button', { name: '🗺️ Begin Adventure!' }));
     expect(onStart).toHaveBeenCalledWith(expect.stringContaining('Combine all of these themes'));
@@ -34,12 +34,13 @@ describe('StoryPromptScreen', () => {
   it('removes a selected theme when it is clicked again', () => {
     render(<StoryPromptScreen {...defaultProps} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Magic' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Ocean' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Ocean' }));
+    fireEvent.click(screen.getByRole('button', { name: /Magic/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Ocean/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Ocean/ }));
 
-    expect(screen.getByRole('textbox')).toHaveValue(expect.stringContaining('young wizard'));
-    expect(screen.getByRole('textbox')).not.toHaveValue(expect.stringContaining('mermaid'));
-    expect(screen.getByRole('button', { name: 'Ocean' })).toHaveAttribute('aria-pressed', 'false');
+    const prompt = screen.getByRole<HTMLTextAreaElement>('textbox');
+    expect(prompt.value).toContain('young wizard');
+    expect(prompt.value).not.toContain('mermaid');
+    expect(screen.getByRole('button', { name: /Ocean/ })).toHaveAttribute('aria-pressed', 'false');
   });
 });
