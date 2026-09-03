@@ -408,6 +408,10 @@ export function recognizeSpeech(locale: string = DEFAULT_LOCALE): { promise: Pro
       }
       if (cancelled) { resolve(''); return; }
       speechConfig.speechRecognitionLanguage = locale;
+      speechConfig.setProperty(
+        SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs,
+        '3000',
+      );
 
       const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
       recognizer = new SpeechSDK.SpeechRecognizer(speechConfig, audioConfig);
