@@ -65,7 +65,7 @@ export default function App() {
 
     if (!stream) {
       setError('Unable to access camera. Please allow camera permissions.');
-      goHome();
+      navigate('reading-home');
       return;
     }
 
@@ -74,7 +74,7 @@ export default function App() {
       videoRef.current.srcObject = stream;
       try { await videoRef.current.play(); } catch { /* safe to ignore */ }
     }
-  }, [navigate, goHome]);
+  }, [navigate]);
 
   const capture = useCallback(async () => {
     const video = videoRef.current;
@@ -98,13 +98,13 @@ export default function App() {
         navigate('reading');
       } else {
         setError('No text found — try again with clearer text.');
-        goHome();
+        navigate('reading-home');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      goHome();
+      navigate('reading-home');
     }
-  }, [stopCamera, navigate, goHome]);
+  }, [stopCamera, navigate]);
 
   const handleReset = useCallback(() => {
     stopCamera();
@@ -113,8 +113,8 @@ export default function App() {
     setError(null);
     setDemoLevel(null);
     setResumeStory(null);
-    goHome();
-  }, [stopCamera, goHome]);
+    navigate('reading-home');
+  }, [stopCamera, navigate]);
 
   const handleEbookFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -132,13 +132,13 @@ export default function App() {
         navigate('reading');
       } else {
         setError('No readable text found in this file — please try another.');
-        goHome();
+        navigate('reading-home');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-      goHome();
+      navigate('reading-home');
     }
-  }, [navigate, goHome]);
+  }, [navigate]);
 
   const handleDemoLevel = useCallback((level: ReadingLevel) => {
     setDemoLevel(level);

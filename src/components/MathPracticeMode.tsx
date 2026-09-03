@@ -50,7 +50,12 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
   useEffect(() => {
     let cancelled = false;
     void loadMathSessions(uid).then((sessions) => {
-      if (!cancelled) setPastSessions(sessions);
+      if (!cancelled) {
+        setPastSessions((current) => [
+          ...current,
+          ...sessions.filter((loaded) => !current.some((existing) => existing.id === loaded.id)),
+        ]);
+      }
     });
     return () => { cancelled = true; };
   }, [uid]);
