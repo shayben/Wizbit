@@ -117,10 +117,18 @@ export const PaywallModal: React.FC = () => {
       onClick={close}
     >
       <div
-        className="w-full md:max-w-md bg-white rounded-t-3xl md:rounded-3xl shadow-2xl p-6 md:p-8 animate-slide-up"
+        className="relative w-full max-h-[calc(100dvh-1rem)] overflow-y-auto md:max-w-md bg-white rounded-t-3xl md:rounded-3xl shadow-2xl p-6 md:p-8 animate-slide-up"
         style={{ overscrollBehavior: 'contain' }}
         onClick={(e) => e.stopPropagation()}
       >
+        <button
+          type="button"
+          onClick={close}
+          className="absolute top-3 right-3 flex h-11 w-11 items-center justify-center rounded-full text-2xl text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+          aria-label="Close quota notification"
+        >
+          ×
+        </button>
         <div className="text-5xl mb-3 text-center">✨</div>
         <h2 id="paywall-title" className="text-2xl font-bold text-center text-gray-900 mb-2">
           {copy.title}

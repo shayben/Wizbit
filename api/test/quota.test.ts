@@ -22,6 +22,13 @@ const ANON: Caller = {
   shortId: 'anon',
 };
 
+const ADMIN: Caller = {
+  uid: 'ms:admin-1',
+  provider: 'microsoft',
+  shortId: 'admin',
+  isAdmin: true,
+};
+
 describe('quota', () => {
   beforeEach(() => _clearQuotaForTests());
 
@@ -53,6 +60,15 @@ describe('quota', () => {
       expect(denied.used).toBe(limit);
       expect(new Date(denied.retryAt).getTime()).toBeGreaterThan(Date.now());
     }
+  });
+
+  it('allows admins to exceed daily limits', async () => {
+    const limit = PLAN_LIMITS.free['story-chapter'];
+    for (let i = 0; i <= limit; i++) {
+      expect((await charge(ADMIN, 'story-chapter')).ok).toBe(true);
+    }
+    const snap = await getUsageSnapshot(ADMIN);
+    expect(snap.counters['story-chapter'].used).toBe(limit + 1);
   });
 
   it('refunds restore quota', async () => {

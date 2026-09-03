@@ -196,7 +196,7 @@ export async function charge(
   const doc = await loadUsage(caller.uid, date);
   const used = doc.counters[purpose] ?? 0;
 
-  if (used + amount > limit) {
+  if (!caller.isAdmin && used + amount > limit) {
     return {
       ok: false,
       plan,

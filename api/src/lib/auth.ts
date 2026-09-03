@@ -24,8 +24,16 @@ export interface Caller {
   uid: string;
   provider: Provider;
   email?: string;
+  isAdmin?: boolean;
   /** Stable, opaque identifier safe to log. */
   shortId: string;
+}
+
+export function isAdminEmail(
+  email: string | undefined,
+  adminEmails = config.auth.adminEmails,
+): boolean {
+  return Boolean(email && adminEmails.includes(email.trim().toLowerCase()));
 }
 
 /* ------------------------------------------------------------------------ */
@@ -80,12 +88,14 @@ async function verifyMicrosoft(token: string): Promise<Caller> {
   const tid = String(payload.tid ?? config.auth.msTenantId);
   if (!oid) throw new Error('Microsoft token missing oid/sub claim');
   const uid = `${oid}.${tid}`;
+  const email = typeof payload.preferred_username === 'string'
+    ? payload.preferred_username
+    : (typeof payload.email === 'string' ? payload.email : undefined);
   return {
     uid,
     provider: 'microsoft',
-    email: typeof payload.preferred_username === 'string'
-      ? payload.preferred_username
-      : (typeof payload.email === 'string' ? payload.email : undefined),
+    email,
+    isAdmin: isAdminEmail(email),
     shortId: shortHash(uid),
   };
 }
@@ -127,6 +137,7 @@ async function verifyGoogle(accessToken: string): Promise<{ caller: Caller; ttlM
       uid,
       provider: 'google',
       email: info.email,
+      isAdmin: isAdminEmail(info.email),
       shortId: shortHash(uid),
     },
     ttlMs: Math.max(60, Math.min(ttlSec, 3600)) * 1000,
@@ -175,7 +186,7 @@ export async function resolveCaller(opts: ResolveOptions): Promise<Caller> {
 function anonymousCaller(ip?: string | null): Caller {
   const fingerprint = (ip ?? 'unknown').slice(0, 64);
   const uid = `anon:${shortHash(fingerprint)}`;
-  return { uid, provider: 'anonymous', shortId: shortHash(uid) };
+  return { uid, provider: 'anonymous', isAdmin: false, shortId: shortHash(uid) };
 }
 
 function shortHash(input: string): string {
