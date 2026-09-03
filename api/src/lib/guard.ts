@@ -46,29 +46,32 @@ export function guard(opts: GuardOptions, handler: GuardedHandler) {
       return unauthorized();
     }
 
-    const amount = opts.amount ?? 1;
-    const result = await charge(caller, opts.purpose, amount);
-    if (!result.ok) {
-      context.log(`quota_denied ${caller.shortId} ${opts.purpose} used=${result.used}/${result.limit} plan=${result.plan}`);
-      return quotaExceeded({
-        purpose: opts.purpose,
-        limit: result.limit,
-        used: result.used,
-        plan: result.plan,
-        retryAt: result.retryAt,
-      });
-    }
-
+    let refundCharge = async () => {};
     let refunded = false;
-    const refundCharge = async () => {
-      if (refunded) return;
-      refunded = true;
-      try {
-        await refund(caller, opts.purpose, amount);
-      } catch {
-        /* best effort */
+    if (config.policy.freemiumEnabled) {
+      const amount = opts.amount ?? 1;
+      const result = await charge(caller, opts.purpose, amount);
+      if (!result.ok) {
+        context.log(`quota_denied ${caller.shortId} ${opts.purpose} used=${result.used}/${result.limit} plan=${result.plan}`);
+        return quotaExceeded({
+          purpose: opts.purpose,
+          limit: result.limit,
+          used: result.used,
+          plan: result.plan,
+          retryAt: result.retryAt,
+        });
       }
-    };
+
+      refundCharge = async () => {
+        if (refunded) return;
+        refunded = true;
+        try {
+          await refund(caller, opts.purpose, amount);
+        } catch {
+          /* best effort */
+        }
+      };
+    }
 
     try {
       return await handler(request, context, { caller, refundCharge });
