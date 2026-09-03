@@ -8,6 +8,8 @@ import { PaywallModal } from './components/PaywallModal.tsx'
 import { ensureMomentCacheLoaded } from './data/momentCache.ts'
 import { GOOGLE_CLIENT_ID } from './services/googleAuthService.ts'
 
+const FREEMIUM_ENABLED = import.meta.env.VITE_FREEMIUM_ENABLED === 'true'
+
 // Pre-load the moment cache so it's ready when the user starts reading
 ensureMomentCacheLoaded();
 
@@ -16,7 +18,7 @@ createRoot(document.getElementById('root')!).render(
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID ?? ''}>
       <AuthProvider>
         <App />
-        <PaywallModal />
+        {FREEMIUM_ENABLED && <PaywallModal />}
       </AuthProvider>
     </GoogleOAuthProvider>
   </StrictMode>,

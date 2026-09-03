@@ -31,6 +31,7 @@
     "COSMOS_KEY": "",
     "COSMOS_DATABASE": "wizbit",
 
+    "FREEMIUM_ENABLED": "false",
     "ALLOW_ANONYMOUS": "true",
     "ANONYMOUS_DAILY_LIMIT_MULTIPLIER": "0.5"
   },

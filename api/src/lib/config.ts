@@ -66,6 +66,7 @@ export const config = {
     database: envVal('COSMOS_DATABASE') ?? 'wizbit',
   },
   policy: {
+    freemiumEnabled: (envVal('FREEMIUM_ENABLED') ?? 'false').toLowerCase() === 'true',
     allowAnonymous: (envVal('ALLOW_ANONYMOUS') ?? 'true').toLowerCase() !== 'false',
     anonymousMultiplier: Number(envVal('ANONYMOUS_DAILY_LIMIT_MULTIPLIER') ?? '0.5') || 0.5,
   },
