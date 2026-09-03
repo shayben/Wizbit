@@ -192,7 +192,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const provider = user?.provider;
-    const microsoftAccountId = provider === 'microsoft' ? user.uid : null;
+    const microsoftAccountId = user?.provider === 'microsoft' ? user.uid : null;
     const microsoftAccount = microsoftAccountId && msalInstance
       ? msalInstance.getAllAccounts().find((account) => account.homeAccountId === microsoftAccountId)
       : null;
