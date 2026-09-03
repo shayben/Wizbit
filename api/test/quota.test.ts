@@ -138,5 +138,6 @@ describe('quota', () => {
     expect(planForCaller('mystery')).toBe('free');
     expect(planForCaller('premium')).toBe('premium');
     expect(planForCaller('trialing')).toBe('trialing');
+    expect(planForCaller('admin')).toBe('free');
   });
 });

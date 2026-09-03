@@ -90,7 +90,6 @@ export function planForCaller(planRaw: string | undefined): Plan {
     case 'premium':
     case 'past_due':
     case 'canceled':
-    case 'admin':
       return planRaw;
     default:
       return 'free';
@@ -253,7 +252,12 @@ export async function getUsageSnapshot(caller: Caller): Promise<{
 }
 
 /** Upsert / update a user's plan (called by Stripe webhook in Phase 1). */
-export async function setUserPlan(uid: string, plan: Plan, email?: string, provider?: string): Promise<void> {
+export async function setUserPlan(
+  uid: string,
+  plan: Exclude<Plan, 'admin'>,
+  email?: string,
+  provider?: string,
+): Promise<void> {
   const doc: UserDoc = {
     id: uid,
     uid,

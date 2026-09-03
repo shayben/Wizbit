@@ -26,6 +26,7 @@ app.http('usage', {
     });
     const snapshot = await getUsageSnapshot(caller);
     return ok({
+      provider: caller.provider,
       account: {
         uid: caller.uid,
         email: caller.email ?? null,
