@@ -192,8 +192,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const provider = user?.provider;
-    const microsoftAccount = provider === 'microsoft' && msalInstance
-      ? msalInstance.getAllAccounts().find((account) => account.homeAccountId === user.uid)
+    const microsoftAccountId = provider === 'microsoft' ? user.uid : null;
+    const microsoftAccount = microsoftAccountId && msalInstance
+      ? msalInstance.getAllAccounts().find((account) => account.homeAccountId === microsoftAccountId)
       : null;
     setUser(null);
     localStorage.removeItem(PROVIDER_KEY);
