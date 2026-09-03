@@ -20,6 +20,16 @@ const THEMES = [
   { emoji: '🦸', label: 'Superheroes', prompt: 'A kid who discovers they have a secret superpower' },
 ];
 
+function buildThemePrompt(selectedLabels: string[]): string {
+  const ideas = THEMES
+    .filter((theme) => selectedLabels.includes(theme.label))
+    .map((theme) => theme.prompt);
+
+  return ideas.length > 0
+    ? `Combine all of these themes in one story: ${ideas.join('; ')}`
+    : '';
+}
+
 const StoryPromptScreen: React.FC<StoryPromptScreenProps> = ({
   readingLevel,
   levelEmoji,
@@ -28,12 +38,18 @@ const StoryPromptScreen: React.FC<StoryPromptScreenProps> = ({
   onBack,
 }) => {
   const [prompt, setPrompt] = useState('');
+  const [selectedThemes, setSelectedThemes] = useState<string[]>([]);
   const [listening, setListening] = useState(false);
   const [sttError, setSttError] = useState<string | null>(null);
   const cancelRef = useRef<(() => void) | null>(null);
 
-  const handleTheme = (themePrompt: string) => {
-    setPrompt(themePrompt);
+  const handleTheme = (themeLabel: string) => {
+    const nextThemes = selectedThemes.includes(themeLabel)
+      ? selectedThemes.filter((label) => label !== themeLabel)
+      : [...selectedThemes, themeLabel];
+
+    setSelectedThemes(nextThemes);
+    setPrompt(buildThemePrompt(nextThemes));
   };
 
   const handleSubmit = () => {
@@ -56,7 +72,10 @@ const StoryPromptScreen: React.FC<StoryPromptScreenProps> = ({
 
     try {
       const text = await promise;
-      if (text) setPrompt((prev) => (prev ? `${prev} ${text}` : text));
+      if (text) {
+        setSelectedThemes([]);
+        setPrompt((prev) => (prev ? `${prev} ${text}` : text));
+      }
     } catch (err) {
       setSttError(err instanceof Error ? err.message : 'Speech recognition failed');
     } finally {
@@ -83,7 +102,7 @@ const StoryPromptScreen: React.FC<StoryPromptScreenProps> = ({
           Reading level: {levelEmoji} {levelLabel} (Grade {readingLevel})
         </p>
         <p className="text-gray-500 text-sm md:text-base mb-5">
-          Pick a theme, type, or <span className="font-semibold text-purple-600">speak</span> your adventure idea!
+          Pick one or more themes, type, or <span className="font-semibold text-purple-600">speak</span> your adventure idea!
         </p>
 
         {/* Theme quick-picks */}
@@ -92,9 +111,10 @@ const StoryPromptScreen: React.FC<StoryPromptScreenProps> = ({
             <button
               key={theme.label}
               type="button"
-              onClick={() => handleTheme(theme.prompt)}
+              onClick={() => handleTheme(theme.label)}
+              aria-pressed={selectedThemes.includes(theme.label)}
               className={`flex flex-col items-center gap-1 py-3 md:py-4 px-1 rounded-2xl border transition-colors
-                ${prompt === theme.prompt
+                ${selectedThemes.includes(theme.label)
                   ? 'bg-purple-100 border-purple-300 shadow-sm'
                   : 'bg-white border-gray-100 shadow-sm active:bg-purple-50 active:border-purple-200'
                 }`}
@@ -109,7 +129,10 @@ const StoryPromptScreen: React.FC<StoryPromptScreenProps> = ({
         <div className="relative mb-4">
           <textarea
             value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            onChange={(e) => {
+              setSelectedThemes([]);
+              setPrompt(e.target.value);
+            }}
             placeholder="A dog who learns to fly and saves the day..."
             rows={3}
             className="w-full rounded-2xl border border-gray-200 p-4 md:p-5 pr-14 text-base md:text-lg
