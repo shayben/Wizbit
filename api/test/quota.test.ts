@@ -9,6 +9,7 @@ import {
   _clearQuotaForTests,
 } from '../src/lib/quota.js';
 import type { Caller } from '../src/lib/auth.js';
+import { config } from '../src/lib/config.js';
 
 const FREE_USER: Caller = {
   uid: 'ms:user-1',
@@ -23,7 +24,11 @@ const ANON: Caller = {
 };
 
 describe('quota', () => {
-  beforeEach(() => _clearQuotaForTests());
+  beforeEach(() => {
+    _clearQuotaForTests();
+    config.auth.adminUids.clear();
+    config.auth.adminEmails.clear();
+  });
 
   it('starts at zero usage', async () => {
     const snap = await getUsageSnapshot(FREE_USER);
@@ -76,6 +81,23 @@ describe('quota', () => {
     expect(snap.counters['story-chapter'].limit).toBe(PLAN_LIMITS.premium['story-chapter']);
   });
 
+  it('admin UIDs bypass free quota limits', async () => {
+    config.auth.adminUids.add(FREE_USER.uid);
+    const amount = PLAN_LIMITS.free.ocr + 1;
+    const result = await charge(FREE_USER, 'ocr', amount);
+    expect(result.ok).toBe(true);
+    const snap = await getUsageSnapshot(FREE_USER);
+    expect(snap.plan).toBe('admin');
+    expect(snap.counters.ocr.limit).toBe(Number.MAX_SAFE_INTEGER);
+  });
+
+  it('admin emails are matched case-insensitively', async () => {
+    config.auth.adminEmails.add('admin@example.com');
+    const caller = { ...FREE_USER, email: 'Admin@Example.com' };
+    const snap = await getUsageSnapshot(caller);
+    expect(snap.plan).toBe('admin');
+  });
+
   it('past_due plan reverts to free limits', async () => {
     await setUserPlan(FREE_USER.uid, 'past_due');
     const snap = await getUsageSnapshot(FREE_USER);
@@ -116,5 +138,6 @@ describe('quota', () => {
     expect(planForCaller('mystery')).toBe('free');
     expect(planForCaller('premium')).toBe('premium');
     expect(planForCaller('trialing')).toBe('trialing');
+    expect(planForCaller('admin')).toBe('free');
   });
 });

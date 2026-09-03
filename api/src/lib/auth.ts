@@ -28,6 +28,11 @@ export interface Caller {
   shortId: string;
 }
 
+export function isAdminCaller(caller: Caller): boolean {
+  return config.auth.adminUids.has(caller.uid)
+    || (caller.email !== undefined && config.auth.adminEmails.has(caller.email.toLowerCase()));
+}
+
 /* ------------------------------------------------------------------------ */
 /*  Microsoft Entra token verification                                       */
 /* ------------------------------------------------------------------------ */
