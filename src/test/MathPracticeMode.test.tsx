@@ -8,10 +8,11 @@ vi.mock('../services/mathService', async (importOriginal) => {
     ...actual,
     MATH_BUDDIES: [{ id: 'pixel', name: 'Pixel the Fox', emoji: '🦊', requiredCorrect: 1 }],
     generateMathQuestions: () => [
-      { id: 'first', prompt: '2 + 2 = ?', answer: 4 },
-      { id: 'second', prompt: '3 + 3 = ?', answer: 6 },
+      { id: 'first', prompt: '2 + 2 = ?', answer: 4, tip: 'Start with the bigger number and count on.' },
+      { id: 'second', prompt: '3 + 3 = ?', answer: 6, tip: 'Start with the bigger number and count on.' },
     ],
     getUnlockedMathBuddyIds: () => [],
+    loadMathSessions: () => Promise.resolve([]),
     saveMathSession: vi.fn(),
     unlockMathBuddy: vi.fn(),
   };
@@ -53,6 +54,7 @@ describe('MathPracticeMode', () => {
 
     expect(screen.getByRole('status')).toHaveTextContent('Not quite');
     expect(screen.getByRole('status')).toHaveTextContent('The correct answer is 4.');
+    expect(screen.getByRole('status')).toHaveTextContent('Start with the bigger number and count on.');
     expect(screen.getByText('2 + 2 = ?')).toBeInTheDocument();
   });
 });

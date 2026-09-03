@@ -8,12 +8,14 @@ export interface MathSkill {
   name: string;
   description: string;
   emoji: string;
+  strategy: string;
 }
 
 export interface MathQuestion {
   id: string;
   prompt: string;
   answer: number;
+  tip: string;
 }
 
 export interface MathResponse {
@@ -52,6 +54,15 @@ export interface MathBuddy {
   requiredCorrect: number;
 }
 
+export type MathMasteryStatus = 'new' | 'developing' | 'mastered';
+
+export interface MathSkillProgress {
+  skillId: string;
+  attempts: number;
+  accuracy: number;
+  status: MathMasteryStatus;
+}
+
 export const MATH_GRADES: Array<{ grade: MathGrade; label: string; emoji: string }> = [
   { grade: 'K', label: 'Kindergarten', emoji: '🐣' },
   { grade: '1', label: 'Grade 1', emoji: '🌱' },
@@ -62,18 +73,24 @@ export const MATH_GRADES: Array<{ grade: MathGrade; label: string; emoji: string
 ];
 
 export const MATH_SKILLS: MathSkill[] = [
-  { id: 'count-next', grade: 'K', name: 'Counting', description: 'Find the next number up to 20', emoji: '🔢' },
-  { id: 'add-5', grade: 'K', name: 'Add to 5', description: 'Put small groups together', emoji: '➕' },
-  { id: 'add-20', grade: '1', name: 'Addition', description: 'Add numbers within 20', emoji: '➕' },
-  { id: 'subtract-20', grade: '1', name: 'Subtraction', description: 'Subtract numbers within 20', emoji: '➖' },
-  { id: 'add-100', grade: '2', name: 'Addition to 100', description: 'Add one- and two-digit numbers', emoji: '➕' },
-  { id: 'subtract-100', grade: '2', name: 'Subtraction to 100', description: 'Subtract within 100', emoji: '➖' },
-  { id: 'multiply-10', grade: '3', name: 'Times Tables', description: 'Practice multiplication facts to 10 × 10', emoji: '✖️' },
-  { id: 'divide-10', grade: '3', name: 'Division Facts', description: 'Practice division using times tables', emoji: '➗' },
-  { id: 'multiply-multi', grade: '4', name: 'Multi-digit Multiplication', description: 'Multiply larger numbers', emoji: '✖️' },
-  { id: 'divide-12', grade: '4', name: 'Division', description: 'Divide evenly by numbers up to 12', emoji: '➗' },
-  { id: 'decimal-add', grade: '5', name: 'Decimal Addition', description: 'Add numbers with tenths', emoji: '🔟' },
-  { id: 'order-operations', grade: '5', name: 'Order of Operations', description: 'Multiply before adding or subtracting', emoji: '🧠' },
+  { id: 'count-next', grade: 'K', name: 'Counting', description: 'Find the next number up to 20', emoji: '🔢', strategy: 'Say the counting numbers in order and stop one number after the number shown.' },
+  { id: 'shapes-sides', grade: 'K', name: 'Shape Sides', description: 'Count the sides of familiar shapes', emoji: '🔺', strategy: 'Trace around the shape and count each straight side once.' },
+  { id: 'add-5', grade: 'K', name: 'Add to 5', description: 'Put small groups together', emoji: '➕', strategy: 'Start with the bigger group, then count on the smaller group.' },
+  { id: 'add-20', grade: '1', name: 'Addition', description: 'Add numbers within 20', emoji: '➕', strategy: 'Start with the bigger number and count on; make a group of 10 when you can.' },
+  { id: 'subtract-20', grade: '1', name: 'Subtraction', description: 'Subtract numbers within 20', emoji: '➖', strategy: 'Start at the first number and count back the amount being taken away.' },
+  { id: 'compare-20', grade: '1', name: 'Compare Numbers', description: 'Find the greater number within 20', emoji: '⚖️', strategy: 'The number farther along on a number line is greater.' },
+  { id: 'place-value', grade: '2', name: 'Place Value', description: 'Find the value of a tens digit', emoji: '🏠', strategy: 'A digit in the tens place means that many groups of 10.' },
+  { id: 'add-100', grade: '2', name: 'Addition to 100', description: 'Add one- and two-digit numbers', emoji: '➕', strategy: 'Line up ones with ones and tens with tens, then add each place.' },
+  { id: 'subtract-100', grade: '2', name: 'Subtraction to 100', description: 'Subtract within 100', emoji: '➖', strategy: 'Line up place values and subtract ones before tens, regrouping one ten if needed.' },
+  { id: 'multiply-10', grade: '3', name: 'Times Tables', description: 'Practice multiplication facts to 10 × 10', emoji: '✖️', strategy: 'Think of multiplication as equal groups or skip-count by one factor.' },
+  { id: 'divide-10', grade: '3', name: 'Division Facts', description: 'Practice division using times tables', emoji: '➗', strategy: 'Ask which multiplication fact uses the divisor to make the total.' },
+  { id: 'fraction-whole', grade: '3', name: 'Fraction Wholes', description: 'Build a whole from equal parts', emoji: '🍕', strategy: 'The denominator names how many equal parts make one whole.' },
+  { id: 'multiply-multi', grade: '4', name: 'Multi-digit Multiplication', description: 'Multiply larger numbers', emoji: '✖️', strategy: 'Break the larger number into tens and ones, multiply each part, then add.' },
+  { id: 'divide-12', grade: '4', name: 'Division', description: 'Divide evenly by numbers up to 12', emoji: '➗', strategy: 'Use the related multiplication fact: divisor × quotient = total.' },
+  { id: 'perimeter', grade: '4', name: 'Perimeter', description: 'Find the distance around rectangles', emoji: '📐', strategy: 'Perimeter is the distance around a shape; add all sides, or double length plus width.' },
+  { id: 'decimal-add', grade: '5', name: 'Decimal Addition', description: 'Add numbers with tenths', emoji: '🔟', strategy: 'Line up decimal points so each place value stays in the correct column.' },
+  { id: 'fraction-add', grade: '5', name: 'Add Fractions', description: 'Add fractions with like denominators', emoji: '🥧', strategy: 'When denominators match, add the numerators and keep the denominator.' },
+  { id: 'order-operations', grade: '5', name: 'Order of Operations', description: 'Multiply before adding or subtracting', emoji: '🧠', strategy: 'Do multiplication and division before addition and subtraction.' },
 ];
 
 export const MATH_BUDDIES: MathBuddy[] = [
@@ -127,6 +144,18 @@ function createQuestion(skillId: string, index: number, random: () => number): M
       answer = first + second;
       break;
     }
+    case 'shapes-sides': {
+      const shapes = [
+        { name: 'triangle', sides: 3 },
+        { name: 'square', sides: 4 },
+        { name: 'rectangle', sides: 4 },
+        { name: 'pentagon', sides: 5 },
+      ];
+      const shape = shapes[randomInt(0, shapes.length - 1, random)];
+      prompt = `How many sides does a ${shape.name} have?`;
+      answer = shape.sides;
+      break;
+    }
     case 'add-20': {
       const first = randomInt(0, 20, random);
       const second = randomInt(0, 20 - first, random);
@@ -139,6 +168,20 @@ function createQuestion(skillId: string, index: number, random: () => number): M
       const second = randomInt(0, first, random);
       prompt = `${first} − ${second} = ?`;
       answer = first - second;
+      break;
+    }
+    case 'compare-20': {
+      const first = randomInt(0, 19, random);
+      const second = randomInt(first + 1, 20, random);
+      prompt = `Which number is greater: ${first} or ${second}?`;
+      answer = second;
+      break;
+    }
+    case 'place-value': {
+      const tens = randomInt(1, 9, random);
+      const ones = randomInt(0, 9, random);
+      prompt = `What is the value of the tens digit in ${tens}${ones}?`;
+      answer = tens * 10;
       break;
     }
     case 'add-100': {
@@ -169,6 +212,12 @@ function createQuestion(skillId: string, index: number, random: () => number): M
       answer = quotient;
       break;
     }
+    case 'fraction-whole': {
+      const denominator = randomInt(2, 8, random);
+      prompt = `How many 1/${denominator} parts make one whole?`;
+      answer = denominator;
+      break;
+    }
     case 'multiply-multi': {
       const first = randomInt(10, 50, random);
       const second = randomInt(2, 12, random);
@@ -183,11 +232,26 @@ function createQuestion(skillId: string, index: number, random: () => number): M
       answer = quotient;
       break;
     }
+    case 'perimeter': {
+      const length = randomInt(2, 12, random);
+      const width = randomInt(2, 12, random);
+      prompt = `A rectangle is ${length} by ${width}. What is its perimeter?`;
+      answer = 2 * (length + width);
+      break;
+    }
     case 'decimal-add': {
       const firstTenths = randomInt(1, 99, random);
       const secondTenths = randomInt(1, 99, random);
       prompt = `${(firstTenths / 10).toFixed(1)} + ${(secondTenths / 10).toFixed(1)} = ?`;
       answer = (firstTenths + secondTenths) / 10;
+      break;
+    }
+    case 'fraction-add': {
+      const denominator = randomInt(2, 10, random);
+      const first = randomInt(1, denominator - 1, random);
+      const second = randomInt(1, denominator - 1, random);
+      prompt = `${first}/${denominator} + ${second}/${denominator} = ? (enter a decimal)`;
+      answer = (first + second) / denominator;
       break;
     }
     case 'order-operations': {
@@ -203,7 +267,8 @@ function createQuestion(skillId: string, index: number, random: () => number): M
       throw new Error(`Unknown math skill: ${skillId}`);
   }
 
-  return { id: `${skillId}-${index}`, prompt, answer };
+  const skill = MATH_SKILLS.find((item) => item.id === skillId);
+  return { id: `${skillId}-${index}`, prompt, answer, tip: skill?.strategy ?? 'Break the problem into smaller steps and check your work.' };
 }
 
 export function generateMathQuestions(
@@ -231,6 +296,36 @@ export function computeMathSummary(sessions: MathSessionRecord[]): MathProgressS
     accuracy: questionsAnswered === 0 ? 0 : Math.round((correctAnswers / questionsAnswered) * 100),
     averageResponseMs: questionsAnswered === 0 ? 0 : Math.round(totalResponseMs / questionsAnswered),
   };
+}
+
+export function getMathSkillProgress(skillId: string, sessions: MathSessionRecord[]): MathSkillProgress {
+  const attempts = sessions
+    .filter((session) => session.skillId === skillId)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .slice(0, 3);
+  const accuracy = attempts.length === 0
+    ? 0
+    : Math.round(attempts.reduce((sum, session) => sum + session.accuracy, 0) / attempts.length);
+  return {
+    skillId,
+    attempts: attempts.length,
+    accuracy,
+    status: attempts.length === 0 ? 'new' : accuracy >= 80 ? 'mastered' : 'developing',
+  };
+}
+
+export function recommendMathSkill(grade: MathGrade, sessions: MathSessionRecord[]): MathSkill {
+  const gradeSkills = MATH_SKILLS.filter((skill) => skill.grade === grade);
+  const latest = sessions
+    .filter((session) => session.grade === grade)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+  if (!latest) return gradeSkills[0];
+
+  const currentIndex = Math.max(0, gradeSkills.findIndex((skill) => skill.id === latest.skillId));
+  const progress = getMathSkillProgress(latest.skillId, sessions);
+  if (progress.accuracy >= 80) return gradeSkills[Math.min(currentIndex + 1, gradeSkills.length - 1)];
+  if (progress.accuracy < 50) return gradeSkills[Math.max(currentIndex - 1, 0)];
+  return gradeSkills[currentIndex];
 }
 
 export async function saveMathSession(uid: string | null | undefined, record: MathSessionRecord): Promise<void> {
