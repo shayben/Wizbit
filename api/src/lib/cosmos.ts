@@ -1,9 +1,10 @@
 /**
  * Cosmos DB client lazily initialised on first use.
  *
- * Uses two containers:
+ * Uses four containers:
  *   - `usage` (partition key /uid)  : per-user-per-day call counters
  *   - `users` (partition key /uid)  : plan / entitlement
+ *   - `progress` (partition key /uid): learner profiles and progress
  *
  * Containers are auto-created on first access (idempotent), so a fresh
  * Cosmos account can be wired in without manual provisioning steps.
@@ -19,6 +20,7 @@ interface DbHandles {
   usage: Container;
   users: Container;
   waitlist: Container;
+  progress: Container;
 }
 
 let handlesPromise: Promise<DbHandles | null> | null = null;
@@ -47,7 +49,11 @@ async function init(): Promise<DbHandles | null> {
     id: 'waitlist',
     partitionKey: { paths: ['/uid'] },
   });
-  return { usage, users, waitlist };
+  const { container: progress } = await database.containers.createIfNotExists({
+    id: config.cosmos.progressContainer,
+    partitionKey: { paths: ['/uid'] },
+  });
+  return { usage, users, waitlist, progress };
 }
 
 export function getCosmos(): Promise<DbHandles | null> {

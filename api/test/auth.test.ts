@@ -50,3 +50,9 @@ describe('admin identity', () => {
     })).toBe(false);
   });
 });
+
+describe('Microsoft auth configuration', () => {
+  it('loads the client id used to validate token audiences when configured', () => {
+    expect(config.auth).toHaveProperty('msClientId');
+  });
+});

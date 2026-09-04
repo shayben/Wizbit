@@ -30,6 +30,7 @@
     "COSMOS_ENDPOINT": "",
     "COSMOS_KEY": "",
     "COSMOS_DATABASE": "wizbit",
+    "COSMOS_PROGRESS_CONTAINER": "progress",
 
     "FREEMIUM_ENABLED": "false",
     "ALLOW_ANONYMOUS": "true",

@@ -15,7 +15,7 @@
  * worker to keep p50 latency low.
  */
 
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { createRemoteJWKSet, decodeJwt, jwtVerify } from 'jose';
 import { config } from './config.js';
 
 export type Provider = 'microsoft' | 'google' | 'anonymous';
@@ -71,14 +71,21 @@ function cachePut(token: string, caller: Caller, ttlMs: number): void {
 }
 
 async function verifyMicrosoft(token: string): Promise<Caller> {
+  const decoded = decodeJwt(token);
+  const tokenTenant = typeof decoded.tid === 'string' ? decoded.tid : '';
+  const configuredTenant = config.auth.msTenantId;
+  const isMultiTenant = ['common', 'organizations', 'consumers'].includes(configuredTenant);
+  if (!tokenTenant || (!isMultiTenant && tokenTenant !== configuredTenant)) {
+    throw new Error('Microsoft token tenant mismatch');
+  }
+
+  const expectedTenant = isMultiTenant ? tokenTenant : configuredTenant;
   const { payload } = await jwtVerify(token, msJwks, {
-    // Audience varies by app registration; we accept any audience but the
-    // signing key + issuer must be Microsoft. (For B2B we'd pin the audience
-    // to our app's client id once `AZURE_AD_CLIENT_ID` is configured server-side.)
     issuer: [
-      `https://login.microsoftonline.com/${config.auth.msTenantId}/v2.0`,
-      `https://sts.windows.net/${config.auth.msTenantId}/`,
+      `https://login.microsoftonline.com/${expectedTenant}/v2.0`,
+      `https://sts.windows.net/${expectedTenant}/`,
     ],
+    ...(config.auth.msClientId ? { audience: config.auth.msClientId } : {}),
   });
   // MSAL homeAccountId is `{oid}.{tid}` — match the client's uid format.
   const oid = String(payload.oid ?? payload.sub ?? '');

@@ -120,6 +120,35 @@ export function unlockMathBuddy(uid: string | null | undefined, buddyId: string)
   try {
     localStorage.setItem(LS_MATH_BUDDIES(uid || 'anon'), JSON.stringify([...unlockedIds, buddyId]));
   } catch { /* localStorage unavailable or full */ }
+  if (uid && isCosmosConfigured) {
+    void upsertDocument({
+      id: `${uid}_mathBuddy_${buddyId}`,
+      uid,
+      type: 'mathBuddy',
+      buddyId,
+      unlockedAt: new Date().toISOString(),
+    }).catch(() => {});
+  }
+}
+
+export async function loadUnlockedMathBuddyIds(uid: string | null | undefined): Promise<string[]> {
+  const local = getUnlockedMathBuddyIds(uid);
+  if (!uid || !isCosmosConfigured) return local;
+  try {
+    const documents = await queryDocuments<{ buddyId: string }>(
+      'SELECT c.buddyId FROM c WHERE c.uid = @uid AND c.type = "mathBuddy"',
+      [{ name: '@uid', value: uid }],
+      uid,
+    );
+    const merged = [...new Set([
+      ...local,
+      ...documents.map((document) => document.buddyId),
+    ])].filter((id) => MATH_BUDDIES.some((buddy) => buddy.id === id));
+    localStorage.setItem(LS_MATH_BUDDIES(uid), JSON.stringify(merged));
+    return merged;
+  } catch {
+    return local;
+  }
 }
 
 function randomInt(min: number, max: number, random: () => number): number {
