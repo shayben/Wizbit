@@ -13,7 +13,7 @@ import type { SrsCollection } from './srsService';
 import { isSrsMastered } from './srsService';
 import { benchmarkFluency, type FluencyBenchmark } from './fluencyService';
 import { summarizeFactTable, type FactState } from './mathFactService';
-import { computeStreak, type DailyState } from './dailyPlanService';
+import { computeStreak, localDateKey, type DailyState } from './dailyPlanService';
 import type { GradeCode } from '../types/grade';
 
 export interface ReportWindow {
@@ -146,12 +146,19 @@ export function buildParentReport({
   const fluencyWcpm = median(wcpmBySession.filter((value) => Number.isFinite(value) && value > 0));
   const fluency = fluencyWcpm === null ? null : benchmarkFluency(fluencyWcpm, grade);
 
-  const activeDays = Object.entries(dailyState.days).filter(([key, counters]) => {
-    const [y, m, d] = key.split('-').map(Number);
-    const date = new Date(y, m - 1, d, 12);
-    return date >= window.from && date <= window.to
-      && Object.values(counters).some((count) => (count ?? 0) > 0);
-  }).length;
+  // Compare day *keys*, not timestamps: a day is in the window or it is not.
+  // Comparing a nominal time-of-day against `to` would drop today's activity
+  // whenever the report is generated earlier in the day than that nominal time.
+  const windowKeys = new Set<string>();
+  for (let offset = 0; offset < days; offset += 1) {
+    windowKeys.add(localDateKey(
+      new Date(now.getFullYear(), now.getMonth(), now.getDate() - offset),
+    ));
+  }
+
+  const activeDays = Object.entries(dailyState.days).filter(([key, counters]) =>
+    windowKeys.has(key) && Object.values(counters).some((count) => (count ?? 0) > 0),
+  ).length;
 
   const streak = computeStreak(dailyState, now);
   const watch = wordsToWatch(reading);

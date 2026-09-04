@@ -141,6 +141,21 @@ describe('buildParentReport', () => {
     expect(buildParentReport({ ...baseInput(), dailyState: daily }).activeDays).toBe(2);
   });
 
+  it('counts today even when the report runs early in the morning', () => {
+    // Regression: comparing a nominal midday against a "now" bound of 06:00
+    // silently dropped the current day's work from the report.
+    const earlyMorning = new Date(2026, 2, 10, 6, 0, 0);
+    const daily = applyActivity(emptyDaily, 'read', 1, earlyMorning);
+    const report = buildParentReport({ ...baseInput(), dailyState: daily, now: earlyMorning });
+    expect(report.activeDays).toBe(1);
+  });
+
+  it('counts activity recorded late at night on the last day of the window', () => {
+    const lateNight = new Date(2026, 2, 10, 23, 45, 0);
+    const daily = applyActivity(emptyDaily, 'read', 1, lateNight);
+    expect(buildParentReport({ ...baseInput(), dailyState: daily, now: lateNight }).activeDays).toBe(1);
+  });
+
   it('always produces at least one highlight and one suggestion', () => {
     const empty = buildParentReport({ ...baseInput(), readingSessions: [], mathSessions: [] });
     expect(empty.highlights.length).toBeGreaterThan(0);
