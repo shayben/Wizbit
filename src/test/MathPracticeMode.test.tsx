@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import MathPracticeMode from '../components/MathPracticeMode';
+import { saveMathSession } from '../services/mathService';
 
 vi.mock('../services/speechService', () => ({ speakWord: vi.fn().mockResolvedValue(undefined) }));
 
@@ -108,6 +109,33 @@ describe('MathPracticeMode', () => {
     render(<MathPracticeMode grade="K" onExit={vi.fn()} />);
     expect(screen.queryByText('Choose your grade')).not.toBeInTheDocument();
     expect(screen.getByText(/Kindergarten/)).toBeInTheDocument();
+  });
+
+  it('lets a learner practice skills above their grade in challenge mode', () => {
+    render(<MathPracticeMode grade="1" onExit={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: /Division Facts/ })).not.toBeInTheDocument();
+
+    tap(/Try challenge mode/);
+
+    expect(screen.queryByRole('button', { name: /Counting/ })).not.toBeInTheDocument();
+    tap(/Division Facts/);
+    expect(screen.getByText('Division Facts')).toBeInTheDocument();
+  });
+
+  it('records challenge practice at the selected skill’s grade', () => {
+    render(<MathPracticeMode grade="1" onExit={vi.fn()} />);
+    tap(/Try challenge mode/);
+    tap(/Division Facts/);
+    answer('4');
+    tap('Keep going!');
+    tap('Next question');
+    answer('6');
+    tap('See results');
+
+    expect(saveMathSession).toHaveBeenCalledWith(undefined, expect.objectContaining({
+      grade: '3',
+      skillId: 'divide-10',
+    }));
   });
 
   it('keeps the check button disabled until an answer is entered', () => {
