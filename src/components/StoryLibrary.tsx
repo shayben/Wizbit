@@ -7,7 +7,7 @@ import { loadStories, deleteStory } from '../services/storyLibraryService';
 import type { SavedStory } from '../services/storyLibraryService';
 import ReadingSession from './ReadingSession';
 import { deserializeRegistry } from '../services/stickerService';
-import { useAuth } from '../contexts/AuthContext';
+import { useProfile } from '../contexts/ProfileContext';
 
 interface StoryLibraryProps {
   onClose: () => void;
@@ -16,7 +16,7 @@ interface StoryLibraryProps {
 }
 
 const StoryLibrary: React.FC<StoryLibraryProps> = ({ onClose, onContinue }) => {
-  const { user } = useAuth();
+  const { scopedUid } = useProfile();
   const [stories, setStories] = useState<SavedStory[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -24,16 +24,16 @@ const StoryLibrary: React.FC<StoryLibraryProps> = ({ onClose, onContinue }) => {
 
   useEffect(() => {
     let cancelled = false;
-    loadStories(user?.uid)
+    loadStories(scopedUid ?? undefined)
       .then((s) => { if (!cancelled) setStories(s); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [user?.uid]);
+  }, [scopedUid]);
 
   const handleDelete = useCallback((id: string) => {
-    deleteStory(id, user?.uid);
+    deleteStory(id, scopedUid ?? undefined);
     setStories((prev) => prev.filter((s) => s.id !== id));
-  }, [user?.uid]);
+  }, [scopedUid]);
 
   // Restore sticker registry from the selected story for visual consistency
   const readingStoryRegistry = useMemo(

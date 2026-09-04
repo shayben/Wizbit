@@ -4,6 +4,7 @@ import { GoogleOAuthProvider } from '@react-oauth/google'
 import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from './contexts/AuthContext.tsx'
+import { ProfileProvider } from './contexts/ProfileContext.tsx'
 import { PaywallModal } from './components/PaywallModal.tsx'
 import { ensureMomentCacheLoaded } from './data/momentCache.ts'
 import { GOOGLE_CLIENT_ID } from './services/googleAuthService.ts'
@@ -17,8 +18,10 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID ?? ''}>
       <AuthProvider>
-        <App />
-        {FREEMIUM_ENABLED && <PaywallModal />}
+        <ProfileProvider>
+          <App />
+          {FREEMIUM_ENABLED && <PaywallModal />}
+        </ProfileProvider>
       </AuthProvider>
     </GoogleOAuthProvider>
   </StrictMode>,

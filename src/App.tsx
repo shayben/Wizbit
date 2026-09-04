@@ -7,17 +7,41 @@ import ProgressDashboard from './components/ProgressDashboard';
 import StoryLibrary from './components/StoryLibrary';
 import AskHelper from './components/AskHelper';
 import MathPracticeMode from './components/MathPracticeMode';
+import ProfilePicker from './components/ProfilePicker';
+import FactDrill from './components/FactDrill';
+import WordProblemMode from './components/WordProblemMode';
+import WordSession from './components/WordSession';
+import DuelMode from './components/DuelMode';
+import ParentReport from './components/ParentReport';
+import StreakBanner from './components/common/StreakBanner';
 import { recognizeText } from './services/ocrService';
 import { extractFromEbook } from './services/ebookService';
 import { readingLevels } from './data/demoParagraphs';
 import type { ReadingLevel, DemoParagraph } from './data/demoParagraphs';
 import type { SavedStory } from './services/storyLibraryService';
 import { useAuth } from './contexts/AuthContext';
-import { useAppStep } from './hooks/useAppStep';
+import { useAppStep, type AppStep } from './hooks/useAppStep';
+
+/** Steps the daily plan can send a learner to. */
+type AppStepTarget = Extract<AppStep,
+  'reading-home' | 'practice-words' | 'sight-words' | 'spelling' | 'facts' | 'word-problems'>;
+import { useProfile } from './contexts/ProfileContext';
 import { getAccountLanguage, DEFAULT_ACCOUNT_LANGUAGE } from './services/progressService';
+import {
+  buildDailyGoal,
+  computeStreak,
+  defaultPlanActivities,
+  loadDailyState,
+  type DailyState,
+  type PlanActivity,
+} from './services/dailyPlanService';
+import { gradeIndex } from './types/grade';
 
 export default function App() {
   const { user, loading: authLoading, isConfigured, signOut } = useAuth();
+  const {
+    profiles, activeProfile, scopedUid, grade, loading: profilesLoading,
+  } = useProfile();
   const { step, navigate, goHome } = useAppStep();
   const [assignmentText, setAssignmentText] = useState('');
   const [momentCacheKey, setMomentCacheKey] = useState<string | undefined>(undefined);
@@ -25,15 +49,26 @@ export default function App() {
   const [demoLevel, setDemoLevel] = useState<ReadingLevel | null>(null);
   const [resumeStory, setResumeStory] = useState<SavedStory | null>(null);
   const [accountLanguage, setAccountLanguageState] = useState<string>(DEFAULT_ACCOUNT_LANGUAGE);
+  const [daily, setDaily] = useState<{ uid: string | null; state: DailyState } | null>(null);
 
   // Load persisted account language whenever the signed-in user changes.
   useEffect(() => {
     let cancelled = false;
-    getAccountLanguage(user?.uid).then((code) => {
+    getAccountLanguage(scopedUid).then((code) => {
       if (!cancelled) setAccountLanguageState(code);
     });
     return () => { cancelled = true; };
-  }, [user?.uid]);
+  }, [scopedUid]);
+
+  // Today's plan and streak for the active learner. Tagged with the uid it
+  // belongs to so switching learners never shows the previous child's streak.
+  useEffect(() => {
+    let cancelled = false;
+    loadDailyState(scopedUid)
+      .then((state) => { if (!cancelled) setDaily({ uid: scopedUid, state }); })
+      .catch(() => { if (!cancelled) setDaily({ uid: scopedUid, state: { days: {}, best: 0 } }); });
+    return () => { cancelled = true; };
+  }, [scopedUid, step]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -170,6 +205,25 @@ export default function App() {
     return <LoginScreen />;
   }
 
+  if (profilesLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // ── Learner picker: shown on demand, and once up front so siblings sharing a
+  // device never share one progress record. ──
+  if (step === 'profiles' || !activeProfile) {
+    return (
+      <ProfilePicker
+        onDone={goHome}
+        onCancel={activeProfile ? goHome : undefined}
+      />
+    );
+  }
+
   // ── Progress Dashboard ──
   if (step === 'dashboard' && user) {
     return <ProgressDashboard user={user} onClose={goHome} />;
@@ -195,14 +249,73 @@ export default function App() {
 
   // ── K–5 math practice ──
   if (step === 'math') {
-    return <MathPracticeMode uid={user?.uid} onExit={goHome} />;
+    return <MathPracticeMode uid={scopedUid} grade={grade} onExit={goHome} />;
   }
 
-  // ── Home: choose a learning area ──
-  if (step === 'home') {
+  // ── Per-fact fluency with the mastery grid ──
+  if (step === 'facts') {
+    return <FactDrill uid={scopedUid} grade={grade} onExit={goHome} />;
+  }
+
+  // ── Word problems ──
+  if (step === 'word-problems') {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white flex flex-col items-center gap-7 p-6 pt-12 md:pt-16">
-        <h1 className="text-3xl md:text-4xl font-bold text-indigo-700">🧙 Wizbit</h1>
+      <WordProblemMode
+        grade={grade}
+        learnerName={activeProfile.name}
+        onExit={goHome}
+      />
+    );
+  }
+
+  // ── Word-based drills (sight words, spelling, tricky words) ──
+  if (step === 'sight-words' || step === 'spelling' || step === 'practice-words') {
+    return <WordSession mode={step} uid={scopedUid} grade={grade} onExit={goHome} />;
+  }
+
+  // ── Head-to-head ──
+  if (step === 'duel') {
+    return <DuelMode profiles={profiles} onExit={goHome} />;
+  }
+
+  // ── Weekly parent report ──
+  if (step === 'parent-report') {
+    return <ParentReport scopedUid={scopedUid} profile={activeProfile} onClose={goHome} />;
+  }
+
+  // ── Home: today's plan, then the learning areas ──
+  if (step === 'home') {
+    const dailyState = daily?.uid === scopedUid ? daily.state : { days: {}, best: 0 };
+    const planActivities = defaultPlanActivities(gradeIndex(grade) <= 1);
+    const goal = buildDailyGoal(dailyState, { activities: planActivities });
+    const streak = computeStreak(dailyState);
+
+    // Where each plan item sends the child.
+    const planDestination: Record<PlanActivity, AppStepTarget> = {
+      read: 'reading-home',
+      'practice-words': 'practice-words',
+      'sight-words': 'sight-words',
+      spelling: 'spelling',
+      'math-facts': 'facts',
+      'word-problems': 'word-problems',
+    };
+
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-indigo-50 to-white flex flex-col items-center gap-6 p-6 pt-10 md:pt-14">
+        <div className="w-full max-w-2xl flex items-center justify-between">
+          <h1 className="text-3xl md:text-4xl font-bold text-indigo-700">🧙 Wizbit</h1>
+          <button
+            type="button"
+            onClick={() => navigate('profiles')}
+            className="flex items-center gap-2 rounded-2xl bg-white border border-indigo-100 px-3 py-2
+                       active:bg-indigo-50 transition-colors"
+          >
+            <span className="text-2xl" aria-hidden="true">{activeProfile.emoji}</span>
+            <span className="font-bold text-indigo-700 max-w-24 truncate">{activeProfile.name}</span>
+            <span aria-hidden="true" className="text-indigo-300">▾</span>
+          </button>
+        </div>
+
         {user && (
           <UserHeader
             user={user}
@@ -211,11 +324,18 @@ export default function App() {
           />
         )}
         {error && <p className="text-red-600 text-sm text-center bg-red-50 rounded-xl p-3 max-w-md">{error}</p>}
+
+        <StreakBanner
+          streak={streak}
+          goal={goal}
+          onStartActivity={(activity) => navigate(planDestination[activity])}
+        />
+
         <div className="w-full max-w-2xl grid md:grid-cols-2 gap-5">
           <button
             type="button"
             onClick={() => navigate('reading-home')}
-            className="min-h-56 rounded-3xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white p-7 text-left shadow-lg active:scale-[0.98] transition-transform"
+            className="min-h-48 rounded-3xl bg-gradient-to-br from-indigo-500 to-blue-600 text-white p-7 text-left shadow-lg active:scale-[0.98] transition-transform"
           >
             <span className="text-6xl" aria-hidden="true">📖</span>
             <span className="block text-3xl font-extrabold mt-5">Reading</span>
@@ -224,13 +344,45 @@ export default function App() {
           <button
             type="button"
             onClick={() => navigate('math')}
-            className="min-h-56 rounded-3xl bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white p-7 text-left shadow-lg active:scale-[0.98] transition-transform"
+            className="min-h-48 rounded-3xl bg-gradient-to-br from-violet-500 to-fuchsia-600 text-white p-7 text-left shadow-lg active:scale-[0.98] transition-transform"
           >
             <span className="text-6xl" aria-hidden="true">🧮</span>
             <span className="block text-3xl font-extrabold mt-5">Math</span>
             <span className="block text-violet-100 mt-2">Build skills with practice chosen for your progress.</span>
           </button>
         </div>
+
+        <div className="w-full max-w-2xl grid grid-cols-2 md:grid-cols-3 gap-3">
+          {([
+            { step: 'facts', emoji: '⚡', label: 'Fact Power', hint: 'Beat the clock' },
+            { step: 'word-problems', emoji: '🧠', label: 'Word Problems', hint: 'Math in words' },
+            { step: 'sight-words', emoji: '👀', label: 'Sight Words', hint: 'Read them instantly' },
+            { step: 'spelling', emoji: '✏️', label: 'Spelling', hint: 'Hear it, write it' },
+            { step: 'practice-words', emoji: '💪', label: 'Tricky Words', hint: 'From your reading' },
+            { step: 'duel', emoji: '⚔️', label: 'Head to Head', hint: 'Play together' },
+          ] as const).map((tile) => (
+            <button
+              key={tile.step}
+              type="button"
+              onClick={() => navigate(tile.step)}
+              className="rounded-2xl bg-white border border-gray-100 p-4 text-left shadow-sm
+                         active:bg-indigo-50 transition-colors"
+            >
+              <span className="text-3xl" aria-hidden="true">{tile.emoji}</span>
+              <span className="block font-bold text-gray-700 mt-2">{tile.label}</span>
+              <span className="block text-xs text-gray-400">{tile.hint}</span>
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => navigate('parent-report')}
+          className="w-full max-w-2xl py-3 rounded-2xl bg-slate-100 text-slate-600 font-semibold
+                     active:bg-slate-200 transition-colors"
+        >
+          📊 Weekly report for grown-ups
+        </button>
       </div>
     );
   }
@@ -314,7 +466,7 @@ export default function App() {
 
           {/* Voice helper: spell or translate any word */}
           <AskHelper
-            uid={user?.uid}
+            uid={scopedUid}
             accountLanguage={accountLanguage}
             onAccountLanguageChange={setAccountLanguageState}
           />

@@ -5,7 +5,26 @@
 
 import { useState, useCallback, useRef } from 'react';
 
-export type AppStep = 'home' | 'reading-home' | 'camera' | 'processing' | 'reading' | 'demo-pick' | 'adventure' | 'dashboard' | 'my-stories' | 'ebook-processing' | 'math';
+export type AppStep =
+  | 'home'
+  | 'profiles'
+  | 'reading-home'
+  | 'camera'
+  | 'processing'
+  | 'reading'
+  | 'demo-pick'
+  | 'adventure'
+  | 'dashboard'
+  | 'my-stories'
+  | 'ebook-processing'
+  | 'math'
+  | 'facts'
+  | 'word-problems'
+  | 'sight-words'
+  | 'spelling'
+  | 'practice-words'
+  | 'duel'
+  | 'parent-report';
 
 export function useAppStep(initial: AppStep = 'home') {
   const [step, setStep] = useState<AppStep>(initial);

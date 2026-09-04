@@ -9,7 +9,6 @@ import type { WordResult } from '../services/speechService';
 import { calculateGamificationScore } from '../services/gamificationService';
 import { SUPPORTED_LANGUAGES, DEFAULT_LANGUAGE, batchTranslateText } from '../services/translationService';
 import type { SupportedLanguage, WordTranslationMap } from '../services/translationService';
-import { useAuth } from '../contexts/AuthContext';
 import {
   saveSession,
   updatePracticeWords,
@@ -28,6 +27,10 @@ import type { StickerRegistry } from '../services/stickerService';
 import type { PreloadedMoment } from '../services/mediaService';
 import { parseReadingLayout } from '../services/layoutService';
 import type { LayoutBlock } from '../services/layoutService';
+import ComprehensionCheck from './ComprehensionCheck';
+import { benchmarkFluency, computeFluency } from '../services/fluencyService';
+import { useProfile } from '../contexts/ProfileContext';
+import { recordActivity } from '../services/dailyPlanService';
 
 export type { WordTiming } from '../hooks/useAssessment';
 
@@ -90,7 +93,7 @@ function tokenise(text: string): string[] {
 const ReadingSession: React.FC<ReadingSessionProps> = ({
   text, momentCacheKey, stickerRegistry, knownStickerLabels, storyTitle, onReset,
 }) => {
-  const { user } = useAuth();
+  const { scopedUid, grade } = useProfile();
   const { words, blocks } = useMemo(() => {
     const parsed = parseReadingLayout(text);
     // Fallback to flat tokenise if the parser found nothing (should be rare).
@@ -132,20 +135,20 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({
   // Hydrate targetLang from persisted account language whenever the user changes.
   useEffect(() => {
     let cancelled = false;
-    getAccountLanguage(user?.uid).then((code) => {
+    getAccountLanguage(scopedUid).then((code) => {
       if (cancelled) return;
       const found = SUPPORTED_LANGUAGES.find((l) => l.code === code);
       if (found) setTargetLang(found);
     });
     return () => { cancelled = true; };
-  }, [user?.uid]);
+  }, [scopedUid]);
 
   const handlePickLanguage = useCallback((lang: SupportedLanguage) => {
     setTargetLang(lang);
     setLangPickerOpen(false);
     // Persist for next session and for the home-screen Ask helper.
-    setAccountLanguage(user?.uid, lang.code);
-  }, [user?.uid]);
+    setAccountLanguage(scopedUid, lang.code);
+  }, [scopedUid]);
 
   // Batch-translate all words when text or language changes
   useEffect(() => {
@@ -159,6 +162,8 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({
 
   // Newly awarded trophies (shown inline after session ends)
   const [newTrophies, setNewTrophies] = useState<Trophy[]>([]);
+  const [showComprehension, setShowComprehension] = useState(false);
+  const [comprehensionScore, setComprehensionScore] = useState<number | null>(null);
 
   // Immersive moments
   const { moments, momentIndices, storyTheme, loading: momentsLoading } = useMoments({
@@ -179,8 +184,8 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({
       stickerSource: moment.stickerSource,
       caption: moment.caption,
       storyTitle,
-    }, user?.uid);
-  }, [storyTitle, user?.uid]);
+    }, scopedUid ?? undefined);
+  }, [storyTitle, scopedUid]);
 
   // Manage ambient soundscape lifecycle
   useEffect(() => {
@@ -230,11 +235,22 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({
     [words, statuses, scores, fluencyScore],
   );
 
+  // Words correct per minute, derived from the per-word statuses and timings
+  // the assessment already collects. Null for passages too short to measure.
+  const fluency = useMemo(
+    () => (sessionDone ? computeFluency(statuses, wordTimings) : null),
+    [sessionDone, statuses, wordTimings],
+  );
+  const fluencyBand = useMemo(
+    () => (fluency ? benchmarkFluency(fluency.wcpm, grade) : null),
+    [fluency, grade],
+  );
+
   // ── Persist session + award trophies when the session ends ──
   useEffect(() => {
-    if (!sessionDone || !gamificationScore || !user) return;
+    if (!sessionDone || !gamificationScore || !scopedUid) return;
 
-    const sessionId = `${user.uid}_${Date.now()}`;
+    const sessionId = `${scopedUid}_${Date.now()}`;
     const assessedStatuses = Object.entries(statuses);
     const wordsNeedPractice = assessedStatuses
       .filter(([, s]) => s === 'mispronounced' || s === 'skipped' || s === 'average')
@@ -255,7 +271,7 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({
     (async () => {
       try {
         await saveSession(
-          user.uid,
+          scopedUid,
           sessionId,
           text,
           gamificationScore.score,
@@ -268,20 +284,22 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({
         );
 
         const clearedCount = await updatePracticeWords(
-          user.uid,
+          scopedUid,
           wordsNeedPractice,
           wordsNowCorrect,
         );
 
-        const progress = await loadUserProgress(user.uid);
+        await recordActivity(scopedUid, 'read', 1);
+
+        const progress = await loadUserProgress(scopedUid);
         if (clearedCount > 0) {
           progress.practiceClearedCount = (progress.practiceClearedCount ?? 0) + clearedCount;
         }
-        const existingTrophies = await loadTrophies(user.uid);
+        const existingTrophies = await loadTrophies(scopedUid);
         const earnedIds = new Set(existingTrophies.map((t) => t.id));
-        const newIds = computeNewTrophies(progress, earnedIds, getStoryStats(user.uid));
+        const newIds = computeNewTrophies(progress, earnedIds, getStoryStats(scopedUid));
         if (newIds.length > 0) {
-          await saveTrophies(user.uid, newIds);
+          await saveTrophies(scopedUid, newIds);
           setNewTrophies(newIds.map((id) => getTrophy(id)!).filter(Boolean));
         }
       } catch { /* non-fatal — assessment data is already shown to the user */ }
@@ -491,6 +509,43 @@ const ReadingSession: React.FC<ReadingSessionProps> = ({
             )}
           </p>
         </div>
+      )}
+
+      {/* Reading rate — the standard elementary progress measure */}
+      {sessionDone && fluency && fluencyBand && !error && (
+        <div className="rounded-2xl bg-white border border-indigo-100 p-4 md:p-5 shadow-sm flex items-center gap-4">
+          <div className="text-center shrink-0">
+            <p className="text-3xl md:text-4xl font-extrabold text-indigo-700">{fluency.wcpm}</p>
+            <p className="text-[10px] md:text-xs text-gray-400 uppercase tracking-wide">words / min</p>
+          </div>
+          <div className="min-w-0">
+            <p className="font-bold text-indigo-700">{fluencyBand.label}</p>
+            <p className="text-sm text-gray-500">{fluencyBand.message}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Comprehension — decoding is only half of reading */}
+      {sessionDone && !error && !showComprehension && (
+        <button
+          type="button"
+          onClick={() => setShowComprehension(true)}
+          className="w-full py-4 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600
+                     text-white font-bold text-lg active:opacity-90 transition-opacity"
+        >
+          {comprehensionScore === null
+            ? '🤔 Check what you understood'
+            : `✅ Comprehension: ${comprehensionScore}% — try again`}
+        </button>
+      )}
+
+      {showComprehension && (
+        <ComprehensionCheck
+          text={text}
+          grade={grade}
+          onComplete={({ percent }) => setComprehensionScore(percent)}
+          onClose={() => setShowComprehension(false)}
+        />
       )}
 
       {/* New trophy notifications */}

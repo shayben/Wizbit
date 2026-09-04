@@ -20,13 +20,25 @@ import {
   loadMathSessions,
   type MathSessionRecord,
 } from '../services/mathService';
+import { useProfile } from '../contexts/ProfileContext';
+import MasteryGrid from './common/MasteryGrid';
+import { LEVEL_STYLE, MASTERY_LEGEND } from './common/masteryLegend';
+import ProgressRing from './common/ProgressRing';
+import {
+  factGrid,
+  loadFactState,
+  summarizeFactTable,
+  type FactState,
+} from '../services/mathFactService';
+import { loadSightWordProgress, sightWordProgress } from '../services/sightWordService';
+import { loadSpellingProgress, spellingProgress } from '../services/spellingService';
 
 interface ProgressDashboardProps {
   user: CurrentUser;
   onClose: () => void;
 }
 
-type Tab = 'history' | 'practice' | 'math' | 'trophies' | 'stickers' | 'analytics';
+type Tab = 'history' | 'practice' | 'math' | 'facts' | 'words' | 'trophies' | 'stickers' | 'analytics';
 
 /** Simple skeleton placeholder bar. */
 const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
@@ -84,12 +96,19 @@ function computeAnalytics(sessions: SessionRecord[]) {
 }
 
 const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) => {
+  // Progress belongs to the active learner, not the account.
+  const { scopedUid, grade, activeProfile } = useProfile();
+  const uid = scopedUid ?? user.uid;
+
   const [tab, setTab] = useState<Tab>('history');
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [practiceWords, setPracticeWords] = useState<PracticeWord[]>([]);
   const [earnedTrophies, setEarnedTrophies] = useState<EarnedTrophy[]>([]);
   const [collectedStickers, setCollectedStickers] = useState<CollectedSticker[]>([]);
   const [mathSessions, setMathSessions] = useState<MathSessionRecord[]>([]);
+  const [factState, setFactState] = useState<FactState>({ srs: {}, stats: {} });
+  const [sightWords, setSightWords] = useState(() => sightWordProgress({}, '1'));
+  const [spelling, setSpelling] = useState(() => spellingProgress({}, '1'));
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -97,24 +116,30 @@ const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) 
     setLoading(true);
     setLoadError(null);
     try {
-      const [s, p, t, stickers, math] = await Promise.all([
-        loadSessions(user.uid),
-        loadPracticeWords(user.uid),
-        loadTrophies(user.uid),
-        loadCollectedStickers(user.uid),
-        loadMathSessions(user.uid),
+      const [s, p, t, stickers, math, facts, sight, spell] = await Promise.all([
+        loadSessions(uid),
+        loadPracticeWords(uid),
+        loadTrophies(uid),
+        loadCollectedStickers(uid),
+        loadMathSessions(uid),
+        loadFactState(uid),
+        loadSightWordProgress(uid),
+        loadSpellingProgress(uid),
       ]);
       setSessions(s);
       setPracticeWords(p);
       setEarnedTrophies(t);
       setCollectedStickers(stickers);
+      setFactState(facts);
+      setSightWords(sightWordProgress(sight, grade));
+      setSpelling(spellingProgress(spell, grade));
       setMathSessions(math);
     } catch (err) {
       setLoadError(err instanceof Error ? err.message : 'Failed to load progress data');
     } finally {
       setLoading(false);
     }
-  }, [user.uid]);
+  }, [uid, grade]);
 
   useEffect(() => { reload(); }, [reload]);
 
@@ -185,12 +210,14 @@ const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) 
 
       {/* Tabs */}
       <div className="flex gap-1 px-4 md:px-6 max-w-lg md:max-w-2xl mx-auto w-full">
-        {(['history', 'practice', 'math', 'trophies', 'stickers', 'analytics'] as Tab[]).map((t) => {
+        {(['history', 'practice', 'math', 'facts', 'words', 'trophies', 'stickers', 'analytics'] as Tab[]).map((t) => {
           const icons: Record<Tab, string> = {
-            history: '📅', practice: '🔁', math: '🧮', trophies: '🏆', stickers: '🖼️', analytics: '📊',
+            history: '📅', practice: '🔁', math: '🧮', facts: '⚡', words: '👀',
+            trophies: '🏆', stickers: '🖼️', analytics: '📊',
           };
           const labels: Record<Tab, string> = {
-            history: 'History', practice: 'Practice', math: 'Math', trophies: 'Trophies', stickers: 'Stickers', analytics: 'Stats',
+            history: 'History', practice: 'Practice', math: 'Math', facts: 'Facts', words: 'Words',
+            trophies: 'Trophies', stickers: 'Stickers', analytics: 'Stats',
           };
           return (
             <button
@@ -318,6 +345,114 @@ const ProgressDashboard: React.FC<ProgressDashboardProps> = ({ user, onClose }) 
                     </div>
                   </>
                 )}
+              </div>
+            )}
+
+            {/* ── Fact mastery tab ── */}
+            {tab === 'facts' && (() => {
+              const summary = summarizeFactTable(factState, 'mul');
+              return (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4 bg-white rounded-2xl border border-gray-100 p-4 md:p-5 shadow-sm">
+                    <ProgressRing percent={summary.fluentPercent} size={84} sublabel="instant" />
+                    <div>
+                      <p className="font-extrabold text-violet-700 text-lg">
+                        {summary.fluent} of {summary.total} facts instant
+                      </p>
+                      <p className="text-sm text-gray-400">
+                        {summary.accurate} correct but slow · {summary.learning} still learning
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="bg-white rounded-2xl border border-gray-100 p-4 md:p-5 shadow-sm">
+                    <MasteryGrid grid={factGrid(factState, 'mul')} operation="mul" />
+                    <div className="flex flex-wrap justify-center gap-3 mt-4">
+                      {MASTERY_LEGEND.map((entry) => (
+                        <span key={entry.level} className="flex items-center gap-1.5 text-xs text-gray-500">
+                          <span aria-hidden="true" className={`w-3 h-3 rounded ${LEVEL_STYLE[entry.level].swatch}`} />
+                          {entry.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {summary.weakest.length > 0 && (
+                    <div className="bg-amber-50 rounded-2xl border border-amber-100 p-4">
+                      <p className="text-xs font-bold uppercase tracking-wide text-amber-700">Shakiest facts</p>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {summary.weakest.map((row) => (
+                          <span key={row.factId} className="rounded-xl bg-white px-3 py-1.5 text-sm font-bold text-amber-700">
+                            {row.factId.split(':')[1]?.replace('x', ' × ')}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* ── Sight words and spelling tab ── */}
+            {tab === 'words' && (
+              <div className="space-y-6">
+                <section>
+                  <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
+                    ⚡ Sight words
+                  </h3>
+                  <div className="flex items-center gap-4 bg-white rounded-2xl border border-gray-100 p-4 shadow-sm mb-3">
+                    <ProgressRing
+                      percent={sightWords.listPercent}
+                      size={72}
+                      colorClass="text-emerald-500"
+                      trackClass="text-emerald-100"
+                    />
+                    <div>
+                      <p className="font-bold text-emerald-700">
+                        {sightWords.mastered} words mastered
+                      </p>
+                      <p className="text-sm text-gray-400">
+                        of {sightWords.available} at {activeProfile
+                          ? (grade === 'K' ? 'kindergarten' : `grade ${grade}`)
+                          : 'this level'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    {sightWords.tiers.map((row) => (
+                      <div key={row.tier.id} className="bg-white rounded-xl border border-gray-100 p-3">
+                        <div className="flex justify-between text-sm">
+                          <span className="font-semibold text-gray-600">{row.tier.label}</span>
+                          <span className="text-gray-400">{row.mastered}/{row.total}</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-emerald-100 mt-2 overflow-hidden">
+                          <div className="h-full bg-emerald-500 transition-all" style={{ width: `${row.percent}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section>
+                  <h3 className="text-sm font-bold text-gray-500 uppercase tracking-wide mb-3">
+                    ✏️ Spelling patterns
+                  </h3>
+                  <div className="space-y-2">
+                    {spelling.patterns.map((row) => (
+                      <div key={row.pattern.id} className="bg-white rounded-xl border border-gray-100 p-3">
+                        <div className="flex justify-between text-sm">
+                          <span className="font-semibold text-gray-600">
+                            {row.pattern.emoji} {row.pattern.name}
+                          </span>
+                          <span className="text-gray-400">{row.mastered}/{row.total}</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-amber-100 mt-2 overflow-hidden">
+                          <div className="h-full bg-amber-500 transition-all" style={{ width: `${row.percent}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
               </div>
             )}
 
