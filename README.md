@@ -7,18 +7,61 @@ stories matched to their reading level.
 
 ## Highlights
 
+### Learners
+
+- **Up to four child profiles per account** — each learner has their own
+  progress, practice list, stickers and adaptive state, so siblings sharing a
+  device never mix their data.
+
+### Reading
+
 - **Scan or upload reading material** — capture a page with the camera, upload
   an image, or import PDF and EPUB files.
 - **Read with live feedback** — Azure pronunciation assessment highlights words
   that were read correctly and words that need more practice.
+- **Reading fluency (WCPM)** — words correct per minute against per-grade
+  benchmarks, measured from each session.
+- **Comprehension checks** — literal, inferential and vocabulary questions
+  after a passage, plus a spoken retell scored on the key ideas the child
+  covered in their own words.
+- **Sight words** — the Fry first 300 in graded tiers, scheduled by spaced
+  repetition.
+- **Spelling dictation** — hear the word, spell it, and get feedback that names
+  the pattern being practised.
+- **Tricky-word drills** — words missed while reading come back for spoken
+  practice until they are cleared.
 - **Hear and translate words** — tap a word for text-to-speech pronunciation or
   a contextual translation.
 - **Experience immersive moments** — AI-generated activities bring passages to
   life while learners read.
 - **Create adventures** — generate level-appropriate, branching stories and
   resume saved adventures later.
-- **Track progress** — review reading history, practice words, statistics,
-  stickers, and trophies.
+
+### Math
+
+- **Adaptive skill practice** — K–5 skills with a recommended next step.
+- **Per-fact fluency** — every addition, subtraction, multiplication and
+  division fact is tracked on both accuracy and speed, drilled by spaced
+  repetition, and shown as a fill-in mastery grid.
+- **Word problems** — level-appropriate problems with a read-aloud button, so a
+  child can attempt a problem above their reading level.
+- **Mistake diagnosis** — a wrong answer is explained (off-by-one, wrong
+  operation, missed regrouping) rather than met with a generic tip.
+- **Visual models** — ten frames and number lines for the earliest grades.
+- **Child-friendly entry** — a large number pad instead of the phone keyboard.
+
+### Engagement
+
+- **Daily plan and streaks** — today's goal and the current streak are shown on
+  the home screen, before the child starts.
+- **Buddy progression** — companions earn XP from every activity, level up and
+  unlock accessories.
+- **Head-to-head** — two learners take turns on one device, each answering
+  questions at their own grade.
+- **Weekly parent report** — what was practised, how fluency is trending, which
+  words and facts are still shaky, and what to try next.
+- **Track progress** — reading history, practice words, fact mastery, sight
+  words, spelling patterns, statistics, stickers and trophies.
 - **Use optional sign-in** — Microsoft and Google SSO sync account progress;
   anonymous use can be enabled for local-only sessions.
 
@@ -106,13 +149,20 @@ Vite with `npm run dev -- --host` and open the displayed network URL.
 
 ## How to Use
 
-1. Capture a printed page or upload an image, PDF, or EPUB.
-2. Review the extracted text and choose the appropriate reading level.
-3. Start reading aloud and follow the word-level feedback.
-4. Tap a word to hear it or view a translation.
-5. Finish the session to save progress and evaluate new trophies.
-6. Open the dashboard to review history and practice opportunities, or start an
-   AI-generated adventure from the home screen.
+1. Choose the learner. Add a profile for each child, with their grade — this
+   is what keeps their progress and adaptive practice separate.
+2. Check today's plan on the home screen and tap any item to start it.
+3. For reading: capture a printed page or upload an image, PDF, or EPUB, then
+   read aloud and follow the word-level feedback. Tap a word to hear it or view
+   a translation.
+4. After reading, run the comprehension check and, if you like, the spoken
+   retell.
+5. For math: practise a skill, drill facts against the mastery grid, or work
+   through word problems.
+6. Open the dashboard to review history, fact mastery, sight-word and spelling
+   progress, trophies and stickers.
+7. Open the weekly report for a plain-language summary and suggested next
+   steps.
 
 Browser microphone and camera access require permission. Camera access from a
 mobile device normally requires HTTPS unless the app is running on localhost.
@@ -137,12 +187,15 @@ mobile device normally requires HTTPS unless the app is running on localhost.
 api/                    Azure Functions proxy, authentication, and quotas
 public/                 Static assets and Azure Static Web Apps configuration
 scripts/                Static data generation utilities
-src/components/         Reading, adventure, dashboard, and account interfaces
-src/contexts/           Authentication state
+src/components/         Reading, math, adventure, dashboard, and account screens
+src/components/common/  Reusable building blocks (quiz runner, number pad,
+                        answer tiles, visual math models, progress displays)
+src/contexts/           Authentication and active-learner state
 src/data/               Demo passages and generated moment data
 src/hooks/              Reading, recording, navigation, and assessment hooks
-src/services/           Client API, progress, story, and trophy logic
-src/test/               Vitest unit tests
+src/services/           Client API, progress, learning, and gamification logic
+src/types/              Shared vocabulary (grade codes, word types)
+src/test/               Vitest unit and integration tests
 ```
 
 ## Deployment

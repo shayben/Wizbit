@@ -54,11 +54,11 @@ export default function App() {
   // Load persisted account language whenever the signed-in user changes.
   useEffect(() => {
     let cancelled = false;
-    getAccountLanguage(user?.uid).then((code) => {
+    getAccountLanguage(scopedUid).then((code) => {
       if (!cancelled) setAccountLanguageState(code);
     });
     return () => { cancelled = true; };
-  }, [user?.uid]);
+  }, [scopedUid]);
 
   // Today's plan and streak for the active learner. Tagged with the uid it
   // belongs to so switching learners never shows the previous child's streak.
@@ -466,7 +466,7 @@ export default function App() {
 
           {/* Voice helper: spell or translate any word */}
           <AskHelper
-            uid={user?.uid}
+            uid={scopedUid}
             accountLanguage={accountLanguage}
             onAccountLanguageChange={setAccountLanguageState}
           />

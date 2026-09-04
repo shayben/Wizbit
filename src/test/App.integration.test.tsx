@@ -177,3 +177,23 @@ describe('App — learner isolation', () => {
     await waitFor(() => expect(mayaPlan).toHaveTextContent('1-day streak'));
   });
 });
+
+describe('App — story features follow the learner', () => {
+  it('scopes the story library to the active learner', async () => {
+    const maya = await createProfile('acct', { name: 'Maya', grade: '3' });
+    const { saveStory, loadStories } = await import('../services/storyLibraryService');
+
+    await saveStory({
+      prompt: "Maya's Quest",
+      readingLevel: '3',
+      levelEmoji: '🌳',
+      chapters: [],
+      storyContext: { prompt: "Maya's Quest", readingLevel: '3', chapters: [] },
+      completed: false,
+    }, `acct::${maya.id}`);
+
+    // The other learner's library stays empty.
+    expect(await loadStories(`acct::other`)).toHaveLength(0);
+    expect(await loadStories(`acct::${maya.id}`)).toHaveLength(1);
+  });
+});

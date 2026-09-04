@@ -1,12 +1,18 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import StreakBanner from '../components/common/StreakBanner';
-import { applyActivity, buildDailyGoal, computeStreak, type DailyState } from '../services/dailyPlanService';
+import {
+  applyActivity,
+  buildDailyGoal,
+  computeStreak,
+  type DailyState,
+  type PlanActivity,
+} from '../services/dailyPlanService';
 
 const NOW = new Date(2026, 2, 10, 12);
 const empty: DailyState = { days: {}, best: 0 };
 
-function renderBanner(state: DailyState, onStartActivity?: (a: never) => void) {
+function renderBanner(state: DailyState, onStartActivity?: (activity: PlanActivity) => void) {
   const goal = buildDailyGoal(state, { activities: ['read', 'math-facts'], now: NOW });
   const streak = computeStreak(state, NOW);
   render(<StreakBanner goal={goal} streak={streak} onStartActivity={onStartActivity} />);
