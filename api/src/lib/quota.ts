@@ -27,7 +27,8 @@ export type Purpose =
   | 'sticker-image'
   | 'speech-minutes'
   | 'transcribe'
-  | 'word-helper';
+  | 'word-helper'
+  | 'learning-activity';
 
 export type Plan = 'free' | 'trialing' | 'premium' | 'past_due' | 'canceled' | 'admin';
 
@@ -45,6 +46,8 @@ interface PlanLimits {
   transcribe: number;
   /** Intent classification calls for the Ask helper (cheap chat). */
   'word-helper': number;
+  /** Generated learning content: comprehension questions and word problems. */
+  'learning-activity': number;
 }
 
 const PREMIUM_LIMITS: PlanLimits = {
@@ -57,6 +60,7 @@ const PREMIUM_LIMITS: PlanLimits = {
   'speech-minutes': 500,
   transcribe: 200,
   'word-helper': 200,
+  'learning-activity': 300,
 };
 
 const FREE_LIMITS: PlanLimits = {
@@ -69,6 +73,7 @@ const FREE_LIMITS: PlanLimits = {
   'speech-minutes': 10,
   transcribe: 20,
   'word-helper': 20,
+  'learning-activity': 15,
 };
 
 const ADMIN_LIMITS: PlanLimits = Object.fromEntries(
