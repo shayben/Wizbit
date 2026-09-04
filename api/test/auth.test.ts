@@ -7,12 +7,6 @@ describe('admin identity', () => {
     config.auth.adminEmails.clear();
   });
 
-  describe('Microsoft auth configuration', () => {
-    it('loads the client id used to validate token audiences when configured', () => {
-      expect(config.auth).toHaveProperty('msClientId');
-    });
-  });
-
   it('grants admin access to the default admin accounts', () => {
     for (const email of [
       'Shaybenelazar@hotmail.com',
@@ -54,5 +48,11 @@ describe('admin identity', () => {
       email: 'other@example.com',
       shortId: 'user',
     })).toBe(false);
+  });
+});
+
+describe('Microsoft auth configuration', () => {
+  it('loads the client id used to validate token audiences when configured', () => {
+    expect(config.auth).toHaveProperty('msClientId');
   });
 });
