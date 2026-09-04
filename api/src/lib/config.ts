@@ -55,6 +55,7 @@ export const config = {
     whisperKey: envVal('AZURE_OPENAI_WHISPER_KEY'),
   },
   auth: {
+    msClientId: envVal('AZURE_AD_CLIENT_ID'),
     msTenantId: envVal('AZURE_AD_TENANT_ID') ?? 'common',
     googleClientId: envVal('GOOGLE_CLIENT_ID'),
     adminUids: new Set([...DEFAULT_ADMIN_UIDS, ...envSet('ADMIN_UIDS')]),

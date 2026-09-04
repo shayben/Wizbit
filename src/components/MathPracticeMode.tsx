@@ -12,6 +12,7 @@ import {
   generateMathQuestions,
   getMathSkillProgress,
   getUnlockedMathBuddyIds,
+  loadUnlockedMathBuddyIds,
   loadMathSessions,
   recommendMathSkill,
   saveMathSession,
@@ -89,12 +90,13 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, grade: learner
 
   useEffect(() => {
     let cancelled = false;
-    void loadMathSessions(uid).then((sessions) => {
+    void Promise.all([loadMathSessions(uid), loadUnlockedMathBuddyIds(uid)]).then(([sessions, buddyIds]) => {
       if (!cancelled) {
         setPastSessions((current) => [
           ...current,
           ...sessions.filter((loaded) => !current.some((existing) => existing.id === loaded.id)),
         ]);
+        setUnlockedBuddyIds(buddyIds);
       }
     });
     return () => { cancelled = true; };
