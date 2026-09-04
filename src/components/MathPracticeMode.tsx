@@ -1,4 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
+import NumberPad from './common/NumberPad';
+import SpeakButton from './common/SpeakButton';
+import TenFrame from './common/TenFrame';
+import NumberLine from './common/NumberLine';
+import { diagnoseFromPrompt } from '../services/mathErrorService';
+import { gradeIndex, type GradeCode } from '../types/grade';
 import {
   MATH_GRADES,
   MATH_BUDDIES,
@@ -19,14 +25,41 @@ import {
 
 interface MathPracticeModeProps {
   uid?: string | null;
+  /** The learner's grade, used to preselect their level and pick supports. */
+  grade?: GradeCode;
   onExit: () => void;
+}
+
+/** Answers with tenths or fractions need a decimal key. */
+function needsDecimal(skillId: string | null): boolean {
+  return skillId === 'decimal-add' || skillId === 'fraction-add';
+}
+
+/**
+ * Numbers to visualise for a young learner, when the prompt is a simple
+ * two-operand sum within 20. Returns null when no model applies.
+ */
+function visualModelFor(prompt: string | undefined, grade: GradeCode):
+  | { kind: 'ten-frame'; left: number; right: number }
+  | { kind: 'number-line'; from: number; to: number; max: number }
+  | null {
+  if (!prompt || gradeIndex(grade) > 1) return null;
+  const match = prompt.match(/^(\d+) ([+−]) (\d+) = \?$/);
+  if (!match) return null;
+
+  const left = Number(match[1]);
+  const right = Number(match[3]);
+  if (match[2] === '+') {
+    return left + right <= 20 ? { kind: 'ten-frame', left, right } : null;
+  }
+  return { kind: 'number-line', from: left, to: left - right, max: Math.max(10, left) };
 }
 
 type Phase = 'grade' | 'skill' | 'practice' | 'results';
 
-const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
-  const [phase, setPhase] = useState<Phase>('grade');
-  const [grade, setGrade] = useState<MathGrade | null>(null);
+const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, grade: learnerGrade, onExit }) => {
+  const [phase, setPhase] = useState<Phase>(learnerGrade ? 'skill' : 'grade');
+  const [grade, setGrade] = useState<MathGrade | null>(learnerGrade ?? null);
   const [skillId, setSkillId] = useState<string | null>(null);
   const [questions, setQuestions] = useState<MathQuestion[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -77,8 +110,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
     setPhase('practice');
   }
 
-  function submitAnswer(event: React.FormEvent) {
-    event.preventDefault();
+  function submitAnswer() {
     if (!currentQuestion || !grade || !selectedSkill || feedback) return;
 
     const studentAnswer = Number(answer);
@@ -92,7 +124,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
       expectedAnswer: currentQuestion.answer,
       studentAnswer,
       correct: Math.abs(studentAnswer - currentQuestion.answer) < 0.0001,
-      responseMs: Math.max(0, event.timeStamp - questionStartedAt.current),
+      responseMs: Math.max(0, Date.now() - questionStartedAt.current),
     };
     const nextResponses = [...responses, response];
     setResponses(nextResponses);
@@ -112,12 +144,13 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
     setValidationError('');
   }
 
-  function continuePractice(event: React.MouseEvent) {
+  function continuePractice() {
     if (!feedback || !grade || !selectedSkill) return;
     if (currentIndex + 1 < questions.length) {
       setCurrentIndex((index) => index + 1);
+      setAnswer('');
       setFeedback(null);
-      questionStartedAt.current = event.timeStamp;
+      questionStartedAt.current = Date.now();
       return;
     }
 
@@ -142,10 +175,6 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
     setPastSessions((sessions) => [record, ...sessions]);
     void saveMathSession(uid, record);
     setPhase('results');
-  }
-
-  function retry(event: React.MouseEvent) {
-    if (skillId) startPractice(skillId, event.timeStamp);
   }
 
   const header = (
@@ -210,7 +239,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
                 <button
                   key={skill.id}
                   type="button"
-                  onClick={(event) => startPractice(skill.id, event.timeStamp)}
+                  onClick={() => startPractice(skill.id, Date.now())}
                   className={`text-left bg-white rounded-2xl p-5 shadow-sm active:bg-violet-50 transition-colors ${
                     isRecommended ? 'border-2 border-violet-500 ring-2 ring-violet-100' : 'border border-violet-100'
                   }`}
@@ -270,7 +299,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
             {nextSkill && (
               <button
                 type="button"
-                onClick={(event) => startPractice(nextSkill.id, event.timeStamp)}
+                onClick={() => startPractice(nextSkill.id, Date.now())}
                 className="w-full py-4 px-3 rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white font-bold"
               >
                 Recommended next: {nextSkill.name}
@@ -279,7 +308,11 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
                 </span>
               </button>
             )}
-            <button type="button" onClick={retry} className="w-full py-3 rounded-2xl bg-violet-600 text-white font-bold">
+            <button
+              type="button"
+              onClick={() => { if (skillId) startPractice(skillId, Date.now()); }}
+              className="w-full py-3 rounded-2xl bg-violet-600 text-white font-bold"
+            >
               Practice again
             </button>
             <button type="button" onClick={() => setPhase('skill')} className="w-full py-3 rounded-2xl bg-violet-50 text-violet-700 font-bold">
@@ -329,9 +362,27 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
           />
         </div>
         <div className="bg-white rounded-3xl border border-violet-100 shadow-lg p-6 md:p-10 text-center">
-          <p className="text-3xl md:text-5xl font-extrabold text-gray-800 min-h-16 flex items-center justify-center">
-            {currentQuestion?.prompt}
-          </p>
+          <div className="flex items-center justify-center gap-3">
+            <p className="text-3xl md:text-5xl font-extrabold text-gray-800 min-h-16 flex items-center justify-center">
+              {currentQuestion?.prompt}
+            </p>
+            {currentQuestion && (
+              <SpeakButton text={currentQuestion.prompt} label="Read the question aloud" />
+            )}
+          </div>
+
+          {/* Concrete and representational support for the youngest learners. */}
+          {(() => {
+            const model = visualModelFor(currentQuestion?.prompt, (grade ?? '1') as GradeCode);
+            if (!model) return null;
+            return model.kind === 'ten-frame' ? (
+              <div className="mt-5 flex justify-center">
+                <TenFrame count={model.left} secondCount={model.right} />
+              </div>
+            ) : (
+              <NumberLine min={0} max={model.max} from={model.from} to={model.to} />
+            );
+          })()}
           {feedback ? (
             <div className="mt-8" role="status" aria-live="polite">
               <div className={`rounded-2xl p-5 ${feedback.correct ? 'bg-green-50 text-green-700' : 'bg-amber-50 text-amber-700'}`}>
@@ -342,15 +393,23 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
                 {feedback.correct && activeStreak >= 2 && (
                   <p className="mt-1 font-semibold">🔥 {activeStreak} in a row!</p>
                 )}
-                {!feedback.correct && (
-                  <>
-                    <p className="mt-1 font-semibold">The correct answer is {feedback.expectedAnswer}.</p>
-                    <div className="mt-4 rounded-xl bg-white/70 p-4 text-left text-amber-900">
-                      <p className="text-xs font-extrabold uppercase tracking-wide">Try this strategy</p>
-                      <p className="mt-1 text-sm font-medium">{currentQuestion?.tip}</p>
-                    </div>
-                  </>
-                )}
+                {!feedback.correct && (() => {
+                  const diagnosis = diagnoseFromPrompt(
+                    feedback.question, feedback.expectedAnswer, feedback.studentAnswer,
+                  );
+                  return (
+                    <>
+                      <p className="mt-1 font-semibold">The correct answer is {feedback.expectedAnswer}.</p>
+                      <div className="mt-4 rounded-xl bg-white/70 p-4 text-left text-amber-900">
+                        <p className="text-xs font-extrabold uppercase tracking-wide">What happened</p>
+                        <p className="mt-1 text-sm font-medium">{diagnosis.message}</p>
+                        <p className="mt-2 text-sm font-medium">{diagnosis.nextStep}</p>
+                        <p className="mt-3 text-xs font-extrabold uppercase tracking-wide">Strategy</p>
+                        <p className="mt-1 text-sm font-medium">{currentQuestion?.tip}</p>
+                      </div>
+                    </>
+                  );
+                })()}
               </div>
               <button
                 type="button"
@@ -362,27 +421,16 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, onExit }) => {
               </button>
             </div>
           ) : (
-            <form onSubmit={submitAnswer} className="mt-8">
-              <label htmlFor="math-answer" className="sr-only">Your answer</label>
-              <input
-                id="math-answer"
-                type="number"
-                step="any"
-                inputMode="decimal"
-                autoFocus
+            <div className="mt-8">
+              <NumberPad
                 value={answer}
-                onChange={(event) => setAnswer(event.target.value)}
-                placeholder="Your answer"
-                className="w-full rounded-2xl border-2 border-violet-200 px-4 py-4 text-center text-2xl font-bold outline-none focus:border-violet-500"
+                onChange={setAnswer}
+                onSubmit={submitAnswer}
+                allowDecimal={needsDecimal(skillId)}
+                maxLength={6}
               />
               {validationError && <p className="text-red-500 text-sm mt-2">{validationError}</p>}
-              <button
-                type="submit"
-                className="w-full mt-4 py-4 rounded-2xl bg-violet-600 text-white text-lg font-bold active:bg-violet-700"
-              >
-                Check answer
-              </button>
-            </form>
+            </div>
           )}
         </div>
       </div>
