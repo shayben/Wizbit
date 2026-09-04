@@ -12,3 +12,4 @@ import './functions/translate.js';
 import './functions/usage.js';
 import './functions/health.js';
 import './functions/waitlist.js';
+import './functions/learnerData.js';

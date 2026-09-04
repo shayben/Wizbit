@@ -64,6 +64,7 @@ export const config = {
     endpoint: envVal('COSMOS_ENDPOINT')?.replace(/\/$/, ''),
     key: envVal('COSMOS_KEY'),
     database: envVal('COSMOS_DATABASE') ?? 'wizbit',
+    progressContainer: envVal('COSMOS_PROGRESS_CONTAINER') ?? 'progress',
   },
   policy: {
     freemiumEnabled: (envVal('FREEMIUM_ENABLED') ?? 'false').toLowerCase() === 'true',
