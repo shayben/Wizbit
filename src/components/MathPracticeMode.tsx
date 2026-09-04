@@ -70,6 +70,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, grade: learner
   const [newBuddy, setNewBuddy] = useState<MathBuddy | null>(null);
   const [validationError, setValidationError] = useState('');
   const [pastSessions, setPastSessions] = useState<MathSessionRecord[]>([]);
+  const [challengingMode, setChallengingMode] = useState(false);
   const questionStartedAt = useRef(0);
 
   const selectedSkill = MATH_SKILLS.find((skill) => skill.id === skillId);
@@ -79,6 +80,12 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, grade: learner
   const correctStreak = [...responses].reverse().findIndex((response) => !response.correct);
   const activeStreak = correctStreak === -1 ? responses.length : correctStreak;
   const recommendedSkill = grade ? recommendMathSkill(grade, pastSessions) : null;
+  const challengeSkills = grade
+    ? MATH_SKILLS.filter((skill) => gradeIndex(skill.grade) > gradeIndex(grade))
+    : [];
+  const displayedSkills = challengingMode
+    ? challengeSkills
+    : MATH_SKILLS.filter((skill) => skill.grade === grade);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,7 +170,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, grade: learner
     const record: MathSessionRecord = {
       id: `${uid || 'anon'}_math_${now.getTime()}`,
       date: now.toISOString(),
-      grade,
+      grade: selectedSkill.grade,
       skillId: selectedSkill.id,
       skillName: selectedSkill.name,
       accuracy: finalAccuracy,
@@ -228,13 +235,28 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, grade: learner
         <div className="max-w-2xl mx-auto">
           {header}
           <h2 className="text-xl md:text-2xl font-bold text-gray-800">
-            {gradeLabel?.emoji} {gradeLabel?.label}
+            {challengingMode ? '🚀 Challenge mode' : `${gradeLabel?.emoji} ${gradeLabel?.label}`}
           </h2>
-          <p className="text-gray-400 mt-1 mb-6">Your next best skill is highlighted, but you can choose any topic.</p>
+          <p className="text-gray-400 mt-1 mb-6">
+            {challengingMode
+              ? `Explore skills beyond ${gradeLabel?.label}.`
+              : 'Your next best skill is highlighted, but you can choose any topic.'}
+          </p>
+          {challengeSkills.length > 0 && (
+            <button
+              type="button"
+              aria-pressed={challengingMode}
+              onClick={() => setChallengingMode((enabled) => !enabled)}
+              className="w-full mb-5 py-3 px-4 rounded-2xl border-2 border-amber-300 bg-amber-50 text-amber-800 font-bold active:bg-amber-100"
+            >
+              {challengingMode ? `← Back to ${gradeLabel?.label}` : '🚀 Try challenge mode'}
+            </button>
+          )}
           <div className="grid md:grid-cols-2 gap-3">
-            {MATH_SKILLS.filter((skill) => skill.grade === grade).map((skill) => {
+            {displayedSkills.map((skill) => {
               const progress = getMathSkillProgress(skill.id, pastSessions);
-              const isRecommended = skill.id === recommendedSkill?.id;
+              const isRecommended = !challengingMode && skill.id === recommendedSkill?.id;
+              const skillGrade = MATH_GRADES.find((item) => item.grade === skill.grade);
               return (
                 <button
                   key={skill.id}
@@ -247,6 +269,7 @@ const MathPracticeMode: React.FC<MathPracticeModeProps> = ({ uid, grade: learner
                   <span className="flex items-center justify-between">
                     <span className="text-3xl">{skill.emoji}</span>
                     {isRecommended && <span className="rounded-full bg-violet-100 text-violet-700 px-2 py-1 text-xs font-bold">Recommended</span>}
+                    {challengingMode && <span className="rounded-full bg-amber-100 text-amber-700 px-2 py-1 text-xs font-bold">{skillGrade?.label}</span>}
                   </span>
                   <span className="block font-bold text-violet-700 text-lg mt-2">{skill.name}</span>
                   <span className="block text-gray-500 text-sm mt-1">{skill.description}</span>
