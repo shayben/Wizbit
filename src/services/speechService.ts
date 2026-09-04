@@ -569,6 +569,10 @@ export function assessWord(word: string, locale: string = DEFAULT_LOCALE): { pro
       }
       if (cancelled) { reject(new Error('cancelled')); return; }
       speechConfig.speechRecognitionLanguage = locale;
+      speechConfig.setProperty(
+        SpeechSDK.PropertyId.SpeechServiceConnection_EndSilenceTimeoutMs,
+        '2000',
+      );
 
       const audioConfig = SpeechSDK.AudioConfig.fromDefaultMicrophoneInput();
       const pronunciationConfig = new SpeechSDK.PronunciationAssessmentConfig(
