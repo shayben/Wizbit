@@ -8,17 +8,17 @@ import {
   parseMidiFile,
   type PianoSong,
 } from '../services/pianoSongService';
+import type { SongsterrSong, SongsterrTrack } from '../services/songsterrService';
 import PianoRoll from './PianoRoll';
 import PianoSheetMusic from './PianoSheetMusic';
 import SongsterrSearch from './SongsterrSearch';
-import type { SongsterrSong, SongsterrTrack } from '../services/songsterrService';
 import { usePianoSynth } from '../hooks/usePianoSynth';
 
 interface PianoLearningProps {
   onClose: () => void;
 }
 
-type SongSourceTab = 'built-in' | 'songsterr' | 'upload';
+type SongSourceTab = 'built-in' | 'upload' | 'songsterr';
 
 const COMPUTER_NOTE_KEYS: Record<string, number> = {
   a: 60, w: 61, s: 62, e: 63, d: 64, f: 65, t: 66,
@@ -35,15 +35,8 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
   const [fileError, setFileError] = useState<string | null>(null);
   const [isLoadingFile, setIsLoadingFile] = useState(false);
   const [sourceTab, setSourceTab] = useState<SongSourceTab>('built-in');
-  const [pendingSongsterr, setPendingSongsterr] = useState<{
-    song: SongsterrSong;
-    track: SongsterrTrack;
-  } | null>(null);
+  const [selectedSongsterr, setSelectedSongsterr] = useState<{ song: SongsterrSong; track: SongsterrTrack } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const pendingSongsterrRef = useRef<{
-    song: SongsterrSong;
-    track: SongsterrTrack;
-  } | null>(null);
   const releaseTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const advancingRef = useRef(false);
   const playTone = usePianoSynth();
@@ -138,18 +131,9 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
     setFileError(null);
     try {
       const parsedSong = await parseMidiFile(file);
-      const songsterrSelection = pendingSongsterrRef.current;
-      const nextSong = songsterrSelection
-        ? {
-            ...parsedSong,
-            id: `songsterr-${songsterrSelection.song.songId}-${parsedSong.id}`,
-            title: `${songsterrSelection.song.artist} — ${songsterrSelection.song.title}`,
-          }
-        : parsedSong;
-      setSong(nextSong);
-      resetPractice(nextSong);
-      pendingSongsterrRef.current = null;
-      setPendingSongsterr(null);
+      setSelectedSongsterr(null);
+      setSong(parsedSong);
+      resetPractice(parsedSong);
     } catch (error) {
       setFileError(error instanceof Error ? error.message : 'Could not read this MIDI file.');
     } finally {
@@ -157,24 +141,22 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
     }
   }, [resetPractice]);
 
-  const handleSongsterrPractice = useCallback((selectedSong: SongsterrSong, track: SongsterrTrack) => {
-    const selection = { song: selectedSong, track };
-    pendingSongsterrRef.current = selection;
-    setPendingSongsterr(selection);
-    setFileError(null);
-    fileInputRef.current?.click();
-  }, []);
-
   const handleLocalMidiUpload = useCallback(() => {
-    pendingSongsterrRef.current = null;
-    setPendingSongsterr(null);
     fileInputRef.current?.click();
   }, []);
 
   const handleBuiltInSong = useCallback((nextSong: PianoSong) => {
+    setSelectedSongsterr(null);
     setSong(nextSong);
     resetPractice(nextSong);
   }, [resetPractice]);
+
+  const handleSongsterrPractice = useCallback((song: SongsterrSong, track: SongsterrTrack) => {
+    setSelectedSongsterr({ song, track });
+    setSourceTab('upload');
+    setFileError(null);
+    setFeedback(`Selected ${song.title} from Songsterr — upload your authorized MIDI file for ${track.name} to practice.`);
+  }, []);
 
   const progress = song.chords.length === 0 ? 0 : ((currentIndex + 1) / song.chords.length) * 100;
 
@@ -199,10 +181,10 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
         </header>
 
         {fileError && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{fileError}</p>}
-        {pendingSongsterr && (
-          <p className="rounded-xl bg-violet-50 p-3 text-sm text-violet-700">
-            Select an authorized MIDI file for {pendingSongsterr.song.artist} — {pendingSongsterr.song.title}
-            {' '}({pendingSongsterr.track.instrument}).
+        {selectedSongsterr && (
+          <p className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-700">
+            Selected from Songsterr: <span className="font-semibold">{selectedSongsterr.song.title}</span> by{' '}
+            {selectedSongsterr.song.artist} · {selectedSongsterr.track.name}. Upload an authorized MIDI file to practice.
           </p>
         )}
 
@@ -214,8 +196,8 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
           >
             {([
               { id: 'built-in', label: 'Built-in', icon: '🎼' },
-              { id: 'songsterr', label: 'Songsterr', icon: '🔎' },
               { id: 'upload', label: 'Upload', icon: '📁' },
+              { id: 'songsterr', label: 'Songsterr', icon: '🎸' },
             ] as const).map((tab) => (
               <button
                 key={tab.id}
@@ -264,18 +246,13 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
             </div>
           )}
 
-          {sourceTab === 'songsterr' && (
-            <div className="mt-4">
-              <SongsterrSearch onPractice={handleSongsterrPractice} />
-            </div>
-          )}
-
           {sourceTab === 'upload' && (
             <div className="mt-4 rounded-xl bg-violet-50 p-5 text-center">
               <div className="text-4xl" aria-hidden="true">🎵</div>
               <h2 className="mt-2 text-lg font-bold text-slate-900">Practice your own MIDI file</h2>
               <p className="mx-auto mt-1 max-w-lg text-sm text-slate-500">
                 Import a Standard MIDI file to generate the sheet view, falling notes, and wait-mode targets.
+                {selectedSongsterr && ' Use the Songsterr selection above to find the song and pair it with an authorized MIDI file.'}
               </p>
               <button
                 type="button"
@@ -285,6 +262,12 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
               >
                 {isLoadingFile ? 'Reading MIDI…' : 'Choose MIDI file'}
               </button>
+            </div>
+          )}
+
+          {sourceTab === 'songsterr' && (
+            <div className="mt-4">
+              <SongsterrSearch onPractice={handleSongsterrPractice} />
             </div>
           )}
         </section>

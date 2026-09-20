@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { getSongsterrUrl, type SongsterrSong } from '../services/songsterrService';
+import {
+  getSongsterrPlayerUrl,
+  getSongsterrUrl,
+  type SongsterrSong,
+} from '../services/songsterrService';
 
 const song: SongsterrSong = {
   songId: 206,
@@ -18,5 +22,11 @@ describe('songsterrService', () => {
 
   it('uses the default track when no track is selected', () => {
     expect(getSongsterrUrl(song)).toContain('-s206t1');
+  });
+
+  it('reuses the Songsterr track page for in-app playback', () => {
+    expect(getSongsterrPlayerUrl(song, 2)).toBe(
+      'https://www.songsterr.com/a/wsa/john-lennon-imagine-tab-s206t2',
+    );
   });
 });

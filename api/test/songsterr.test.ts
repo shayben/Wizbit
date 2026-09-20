@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { mapSongsterrResults } from '../src/lib/songsterr.js';
+import { buildSongsterrAudioUrl, mapSongsterrResults } from '../src/lib/songsterr.js';
 
 describe('Songsterr result mapping', () => {
   it('keeps supported metadata and identifies piano tracks', () => {
@@ -45,5 +45,11 @@ describe('Songsterr result mapping', () => {
       { songId: 1, artist: 'A', title: 'B', tracks: [], isJunk: true },
       { title: 'Missing fields' },
     ])).toEqual([]);
+  });
+
+  it('builds the direct Songsterr audio URL for a selected track', () => {
+    expect(buildSongsterrAudioUrl(206, 8902801, 'v4-x1T2JDTt0b7jgCGuIfk_K', 1)).toBe(
+      'https://audio4-1.songsterr.com/206/8902801/v4-x1T2JDTt0b7jgCGuIfk_K/100/f/1.opus',
+    );
   });
 });

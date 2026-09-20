@@ -32,6 +32,25 @@ interface SongsterrApiSong {
   tracks?: SongsterrApiTrack[];
 }
 
+export function buildSongsterrAudioUrl(
+  songId: number,
+  revisionId: number,
+  audioV4: string,
+  trackIndex: number,
+): string {
+  if (!Number.isInteger(songId) || songId <= 0) {
+    throw new Error('Songsterr songId must be a positive integer.');
+  }
+  if (!Number.isInteger(revisionId) || revisionId <= 0) {
+    throw new Error('Songsterr revisionId must be a positive integer.');
+  }
+  if (!audioV4 || !audioV4.startsWith('v4-')) {
+    throw new Error('Songsterr audioV4 hash is missing or malformed.');
+  }
+  const safeTrackIndex = Number.isInteger(trackIndex) ? Math.max(trackIndex, 0) : 0;
+  return `https://audio4-1.songsterr.com/${songId}/${revisionId}/${audioV4}/100/f/${safeTrackIndex}.opus`;
+}
+
 export function mapSongsterrResults(value: unknown): SongsterrSong[] {
   if (!Array.isArray(value)) return [];
 

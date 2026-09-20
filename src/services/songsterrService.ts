@@ -21,11 +21,27 @@ interface SongsterrSearchResponse {
   songs: SongsterrSong[];
 }
 
+interface SongsterrTrackAudioResponse {
+  audioUrl: string;
+  songId: number;
+  trackIndex: number;
+  title: string;
+  artist: string;
+  instrument: string;
+}
+
 export async function searchSongsterr(query: string): Promise<SongsterrSong[]> {
   const response = await apiGet<SongsterrSearchResponse>(
     `/songsterr/search?q=${encodeURIComponent(query.trim())}`,
   );
   return response.songs;
+}
+
+export async function getSongsterrAudio(song: SongsterrSong, track: SongsterrTrack): Promise<string> {
+  const response = await apiGet<SongsterrTrackAudioResponse>(
+    `/songsterr/track?songId=${song.songId}&trackIndex=${track.index}`,
+  );
+  return response.audioUrl;
 }
 
 export function getSongsterrUrl(song: SongsterrSong, trackIndex?: number): string {
@@ -37,4 +53,8 @@ export function getSongsterrUrl(song: SongsterrSong, trackIndex?: number): strin
     .replace(/^-|-$/g, '');
   const selectedTrack = trackIndex ?? song.defaultTrack;
   return `https://www.songsterr.com/a/wsa/${slug}-tab-s${song.songId}t${selectedTrack}`;
+}
+
+export function getSongsterrPlayerUrl(song: SongsterrSong, trackIndex?: number): string {
+  return getSongsterrUrl(song, trackIndex);
 }

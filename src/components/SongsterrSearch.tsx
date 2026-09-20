@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import {
+  getSongsterrAudio,
   getSongsterrUrl,
   searchSongsterr,
   type SongsterrSong,
@@ -16,6 +17,27 @@ export default function SongsterrSearch({ onPractice }: SongsterrSearchProps) {
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [playingSong, setPlayingSong] = useState<SongsterrSong | null>(null);
+  const [playingTrack, setPlayingTrack] = useState<SongsterrTrack | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false);
+
+  const handlePlaySong = useCallback(async (song: SongsterrSong, track: SongsterrTrack) => {
+    setIsLoadingAudio(true);
+    setAudioError(null);
+    setPlayingSong(song);
+    setPlayingTrack(track);
+
+    try {
+      setAudioUrl(await getSongsterrAudio(song, track));
+    } catch {
+      setAudioUrl(null);
+      setAudioError('This Songsterr track is not playable in-app right now. Try the official tab instead.');
+    } finally {
+      setIsLoadingAudio(false);
+    }
+  }, []);
 
   const handleSearch = useCallback(async (event: React.FormEvent) => {
     event.preventDefault();
@@ -85,6 +107,17 @@ export default function SongsterrSearch({ onPractice }: SongsterrSearchProps) {
                   <p className="mt-1 truncate text-xs text-slate-400">{suggestedTrack.name}</p>
                 )}
                 <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (suggestedTrack) {
+                        void handlePlaySong(song, suggestedTrack);
+                      }
+                    }}
+                    className="rounded-lg bg-sky-100 px-3 py-2 text-xs font-semibold text-sky-700"
+                  >
+                    Play in app
+                  </button>
                   <a
                     href={getSongsterrUrl(song, suggestedTrack?.index)}
                     target="_blank"
@@ -106,6 +139,43 @@ export default function SongsterrSearch({ onPractice }: SongsterrSearchProps) {
               </article>
             );
           })}
+        </div>
+      )}
+
+      {playingSong && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4">
+          <div className="w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-violet-500">Songsterr player</p>
+                <h3 className="text-lg font-bold text-slate-900">{playingSong.title}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setPlayingSong(null);
+                  setPlayingTrack(null);
+                  setAudioUrl(null);
+                  setAudioError(null);
+                }}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700"
+              >
+                Close
+              </button>
+            </div>
+            <div className="p-4">
+              {audioError && <p className="mb-3 rounded-lg bg-red-50 p-3 text-sm text-red-700">{audioError}</p>}
+              {isLoadingAudio && <p className="mb-3 text-sm text-slate-500">Loading Songsterr audio…</p>}
+              {audioUrl && (
+                <audio controls autoPlay className="w-full" src={audioUrl}>
+                  Your browser does not support embedded audio playback.
+                </audio>
+              )}
+              {playingTrack && !audioUrl && !audioError && !isLoadingAudio && (
+                <p className="text-sm text-slate-500">No playable audio was returned for this Songsterr track.</p>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
