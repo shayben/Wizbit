@@ -14,6 +14,7 @@ import WordSession from './components/WordSession';
 import DuelMode from './components/DuelMode';
 import ParentReport from './components/ParentReport';
 import StreakBanner from './components/common/StreakBanner';
+import PianoLearning from './components/PianoLearning';
 import { recognizeText } from './services/ocrService';
 import { extractFromEbook } from './services/ebookService';
 import { readingLevels } from './data/demoParagraphs';
@@ -283,6 +284,10 @@ export default function App() {
     return <ParentReport scopedUid={scopedUid} profile={activeProfile} onClose={goHome} />;
   }
 
+  if (step === 'piano') {
+    return <PianoLearning onClose={goHome} />;
+  }
+
   // ── Home: today's plan, then the learning areas ──
   if (step === 'home') {
     const dailyState = daily?.uid === scopedUid ? daily.state : { days: {}, best: 0 };
@@ -331,7 +336,7 @@ export default function App() {
           onStartActivity={(activity) => navigate(planDestination[activity])}
         />
 
-        <div className="w-full max-w-2xl grid md:grid-cols-2 gap-5">
+        <div className="w-full max-w-2xl grid md:grid-cols-3 gap-5">
           <button
             type="button"
             onClick={() => navigate('reading-home')}
@@ -349,6 +354,15 @@ export default function App() {
             <span className="text-6xl" aria-hidden="true">🧮</span>
             <span className="block text-3xl font-extrabold mt-5">Math</span>
             <span className="block text-violet-100 mt-2">Build skills with practice chosen for your progress.</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('piano')}
+            className="min-h-48 rounded-3xl bg-gradient-to-br from-fuchsia-500 to-pink-600 text-white p-7 text-left shadow-lg active:scale-[0.98] transition-transform"
+          >
+            <span className="text-6xl" aria-hidden="true">🎹</span>
+            <span className="block text-3xl font-extrabold mt-5">Piano</span>
+            <span className="block text-pink-100 mt-2">Practice songs with your USB MIDI keyboard.</span>
           </button>
         </div>
 
@@ -507,6 +521,7 @@ export default function App() {
         >
           📚 My Stories
         </button>
+
       </div>
     );
   }

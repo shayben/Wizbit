@@ -24,6 +24,7 @@ export type AppStep =
   | 'spelling'
   | 'practice-words'
   | 'duel'
+  | 'piano'
   | 'parent-report';
 
 export function useAppStep(initial: AppStep = 'home') {
