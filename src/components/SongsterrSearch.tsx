@@ -36,7 +36,7 @@ export default function SongsterrSearch({ onPractice }: SongsterrSearchProps) {
   }, [query]);
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <section>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs font-bold uppercase tracking-wider text-violet-500">Songsterr catalog</p>

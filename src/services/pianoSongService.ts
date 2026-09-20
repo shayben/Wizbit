@@ -20,6 +20,7 @@ export interface PianoChord {
 export interface PianoSong {
   id: string;
   title: string;
+  credit?: string;
   duration: number;
   bpm: number;
   notes: PianoNote[];
@@ -106,30 +107,77 @@ export async function parseMidiFile(file: File): Promise<PianoSong> {
   };
 }
 
-function makeDemoNote(midi: number, beat: number, beats = 1): PianoNote {
+function makeDemoNote(songId: string, index: number, midi: number, beat: number, beats = 1, secondsPerBeat = 0.6): PianoNote {
   return {
-    id: `demo-${midi}-${beat}`,
+    id: `${songId}-${index}`,
     midi,
     name: midiNoteName(midi),
-    time: beat * 0.6,
-    duration: beats * 0.55,
+    time: beat * secondsPerBeat,
+    duration: beats * secondsPerBeat * 0.92,
     velocity: 0.8,
     hand: midi < 60 ? 'left' : 'right',
   };
 }
 
-const demoNotes = [
-  makeDemoNote(60, 0), makeDemoNote(60, 1), makeDemoNote(67, 2), makeDemoNote(67, 3),
-  makeDemoNote(69, 4), makeDemoNote(69, 5), makeDemoNote(67, 6, 2),
-  makeDemoNote(65, 8), makeDemoNote(65, 9), makeDemoNote(64, 10), makeDemoNote(64, 11),
-  makeDemoNote(62, 12), makeDemoNote(62, 13), makeDemoNote(60, 14, 2),
+type MelodyStep = readonly [midi: number, beats?: number];
+
+function makeBuiltInSong(
+  id: string,
+  title: string,
+  credit: string,
+  bpm: number,
+  melody: readonly MelodyStep[],
+): PianoSong {
+  const secondsPerBeat = 60 / bpm;
+  let beat = 0;
+  const notes = melody.map(([midi, beats = 1], index) => {
+    const note = makeDemoNote(id, index, midi, beat, beats, secondsPerBeat);
+    beat += beats;
+    return note;
+  });
+
+  return {
+    id,
+    title,
+    credit,
+    duration: beat * secondsPerBeat,
+    bpm,
+    notes,
+    chords: groupNotesIntoChords(notes),
+  };
+}
+
+export const BUILT_IN_PIANO_SONGS: PianoSong[] = [
+  makeBuiltInSong('demo-twinkle', 'Twinkle, Twinkle', 'Traditional melody · Public domain', 100, [
+    [60], [60], [67], [67], [69], [69], [67, 2],
+    [65], [65], [64], [64], [62], [62], [60, 2],
+  ]),
+  makeBuiltInSong('demo-mary', 'Mary Had a Little Lamb', 'Traditional melody · Public domain', 104, [
+    [64], [62], [60], [62], [64], [64], [64, 2],
+    [62], [62], [62, 2], [64], [67], [67, 2],
+    [64], [62], [60], [62], [64], [64], [64], [64],
+    [62], [62], [64], [62], [60, 2],
+  ]),
+  makeBuiltInSong('demo-ode-to-joy', 'Ode to Joy', 'Ludwig van Beethoven · Public domain', 112, [
+    [64], [64], [65], [67], [67], [65], [64], [62],
+    [60], [60], [62], [64], [64, 1.5], [62, 0.5], [62, 2],
+    [64], [64], [65], [67], [67], [65], [64], [62],
+    [60], [60], [62], [64], [62, 1.5], [60, 0.5], [60, 2],
+  ]),
+  makeBuiltInSong('demo-frere-jacques', 'Frère Jacques', 'Traditional French round · Public domain', 108, [
+    [60], [62], [64], [60], [60], [62], [64], [60],
+    [64], [65], [67, 2], [64], [65], [67, 2],
+    [67, 0.5], [69, 0.5], [67, 0.5], [65, 0.5], [64], [60],
+    [67, 0.5], [69, 0.5], [67, 0.5], [65, 0.5], [64], [60],
+    [60], [55], [60, 2], [60], [55], [60, 2],
+  ]),
+  makeBuiltInSong('demo-row-row-row', 'Row, Row, Row Your Boat', 'Traditional melody · Public domain', 108, [
+    [60, 1.5], [60, 0.5], [60], [62, 0.5], [64, 1.5],
+    [64], [62], [64], [65], [67, 2],
+    [72, 0.5], [72, 0.5], [72, 0.5], [67, 0.5],
+    [67, 0.5], [67, 0.5], [64, 0.5], [64, 0.5],
+    [60], [67], [64], [62], [60, 2],
+  ]),
 ];
 
-export const DEMO_PIANO_SONG: PianoSong = {
-  id: 'demo-twinkle',
-  title: 'Twinkle, Twinkle (melody)',
-  duration: 9.6,
-  bpm: 100,
-  notes: demoNotes,
-  chords: groupNotesIntoChords(demoNotes),
-};
+export const DEMO_PIANO_SONG = BUILT_IN_PIANO_SONGS[0];

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  BUILT_IN_PIANO_SONGS,
   evaluatePlayedNotes,
   groupNotesIntoChords,
   midiNoteName,
@@ -51,5 +52,15 @@ describe('pianoSongService', () => {
       missing: [],
       extra: [70],
     });
+  });
+
+  it('provides distinct playable public-domain lessons', () => {
+    expect(BUILT_IN_PIANO_SONGS.length).toBeGreaterThanOrEqual(5);
+    expect(new Set(BUILT_IN_PIANO_SONGS.map((song) => song.id)).size).toBe(BUILT_IN_PIANO_SONGS.length);
+    for (const song of BUILT_IN_PIANO_SONGS) {
+      expect(song.credit).toContain('Public domain');
+      expect(song.notes.length).toBeGreaterThan(10);
+      expect(song.chords.length).toBe(song.notes.length);
+    }
   });
 });
