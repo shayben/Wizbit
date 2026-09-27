@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { detectPitch, frequencyToMidi } from '../services/pitchDetectionService';
+import {
+  detectPitch,
+  frequencyToMidi,
+  measureSignalLevel,
+} from '../services/pitchDetectionService';
 
 type MicrophoneStatus = 'idle' | 'requesting' | 'listening' | 'unsupported' | 'error';
 
@@ -8,6 +12,25 @@ const MAX_MIDI_NOTE = 84;
 const REQUIRED_STABLE_FRAMES = 2;
 const SILENT_FRAMES_TO_RELEASE = 3;
 const ANALYSIS_INTERVAL_MS = 70;
+const SIGNAL_LEVEL_FOR_FULL_METER = 0.08;
+
+async function requestMicrophone() {
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      audio: {
+        autoGainControl: false,
+        echoCancellation: false,
+        noiseSuppression: false,
+        channelCount: 1,
+      },
+    });
+  } catch (error) {
+    const canRetryWithBasicConstraints = error instanceof TypeError
+      || (error instanceof DOMException && error.name === 'OverconstrainedError');
+    if (!canRetryWithBasicConstraints) throw error;
+    return navigator.mediaDevices.getUserMedia({ audio: true });
+  }
+}
 
 export function useMicrophonePitch(onNoteOn: (note: number, velocity: number) => void) {
   const isSupported = typeof navigator.mediaDevices?.getUserMedia === 'function'
@@ -17,6 +40,7 @@ export function useMicrophonePitch(onNoteOn: (note: number, velocity: number) =>
     isSupported ? null : 'Microphone note detection is not supported in this browser.',
   );
   const [detectedMidi, setDetectedMidi] = useState<number | null>(null);
+  const [inputLevel, setInputLevel] = useState(0);
   const callbackRef = useRef(onNoteOn);
   const streamRef = useRef<MediaStream | null>(null);
   const contextRef = useRef<AudioContext | null>(null);
@@ -60,6 +84,7 @@ export function useMicrophonePitch(onNoteOn: (note: number, velocity: number) =>
   const stop = useCallback(() => {
     releaseResources();
     setDetectedMidi(null);
+    setInputLevel(0);
     setError(null);
     setStatus(isSupported ? 'idle' : 'unsupported');
   }, [isSupported, releaseResources]);
@@ -76,16 +101,10 @@ export function useMicrophonePitch(onNoteOn: (note: number, velocity: number) =>
     setStatus('requesting');
     setError(null);
     setDetectedMidi(null);
+    setInputLevel(0);
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          autoGainControl: false,
-          echoCancellation: false,
-          noiseSuppression: false,
-          channelCount: 1,
-        },
-      });
+      const stream = await requestMicrophone();
       if (generation !== generationRef.current) {
         stream.getTracks().forEach((track) => track.stop());
         return;
@@ -124,6 +143,8 @@ export function useMicrophonePitch(onNoteOn: (note: number, velocity: number) =>
         }
 
         analyser.getFloatTimeDomainData(samples);
+        const signalLevel = measureSignalLevel(samples);
+        setInputLevel(Math.min(1, signalLevel / SIGNAL_LEVEL_FOR_FULL_METER));
         const frequency = detectPitch(samples, context.sampleRate);
         const midi = frequency === null ? null : frequencyToMidi(frequency);
         const playableMidi = midi !== null && midi >= MIN_MIDI_NOTE && midi <= MAX_MIDI_NOTE
@@ -142,8 +163,12 @@ export function useMicrophonePitch(onNoteOn: (note: number, velocity: number) =>
         }
 
         silentFramesRef.current = 0;
-        if (candidateRef.current === playableMidi) {
+        if (
+          candidateRef.current !== null
+          && Math.abs(candidateRef.current - playableMidi) <= 1
+        ) {
           stableFramesRef.current += 1;
+          candidateRef.current = playableMidi;
         } else {
           candidateRef.current = playableMidi;
           stableFramesRef.current = 1;
@@ -163,6 +188,7 @@ export function useMicrophonePitch(onNoteOn: (note: number, velocity: number) =>
     } catch (microphoneError) {
       if (generation !== generationRef.current) return;
       releaseResources();
+      setInputLevel(0);
       setStatus('error');
       setError(
         microphoneError instanceof DOMException && microphoneError.name === 'NotAllowedError'
@@ -182,6 +208,7 @@ export function useMicrophonePitch(onNoteOn: (note: number, velocity: number) =>
     status,
     error,
     detectedMidi,
+    inputLevel,
     isSupported,
     start,
     stop,

@@ -517,7 +517,9 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
                 <p className="font-semibold">
                   {microphone.status === 'listening'
                     ? microphone.detectedMidi === null
-                      ? 'Listening for a note…'
+                      ? microphone.inputLevel < 0.04
+                        ? 'No sound reaching microphone'
+                        : 'Sound heard — finding the note…'
                       : `Heard ${midiNoteName(microphone.detectedMidi)}`
                     : microphone.isSupported ? 'Acoustic piano input' : 'Not supported'}
                 </p>
@@ -535,8 +537,25 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
                 </button>
               )}
             </div>
+            {microphone.status === 'listening' && (
+              <div
+                className="mt-3 h-2 overflow-hidden rounded-full bg-emerald-900"
+                role="meter"
+                aria-label="Microphone input level"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(microphone.inputLevel * 100)}
+              >
+                <div
+                  className="h-full bg-emerald-400 transition-[width] duration-75"
+                  style={{ width: `${Math.max(2, microphone.inputLevel * 100)}%` }}
+                />
+              </div>
+            )}
             <p className="mt-2 text-xs text-emerald-200">
-              Best for one note at a time. Play clearly and reduce background noise.
+              {microphone.status === 'listening' && microphone.inputLevel < 0.04
+                ? 'Move the device closer to the piano and check that Safari or Chrome has microphone permission.'
+                : 'Best for one note at a time. Play clearly and reduce background noise.'}
             </p>
             {microphone.error && <p className="mt-2 text-xs text-amber-300">{microphone.error}</p>}
           </div>

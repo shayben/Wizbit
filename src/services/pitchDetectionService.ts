@@ -1,10 +1,18 @@
 const DEFAULT_MIN_FREQUENCY = 65;
 const DEFAULT_MAX_FREQUENCY = 1100;
-const SILENCE_THRESHOLD = 0.012;
-const YIN_THRESHOLD = 0.15;
+const SILENCE_THRESHOLD = 0.003;
+const YIN_THRESHOLD = 0.2;
 
 export function frequencyToMidi(frequency: number) {
   return Math.round(69 + (12 * Math.log2(frequency / 440)));
+}
+
+export function measureSignalLevel(samples: Float32Array) {
+  if (samples.length === 0) return 0;
+
+  let squareSum = 0;
+  for (const sample of samples) squareSum += sample * sample;
+  return Math.sqrt(squareSum / samples.length);
 }
 
 export function detectPitch(
@@ -15,9 +23,7 @@ export function detectPitch(
 ): number | null {
   if (samples.length < 4 || sampleRate <= 0) return null;
 
-  let squareSum = 0;
-  for (const sample of samples) squareSum += sample * sample;
-  if (Math.sqrt(squareSum / samples.length) < SILENCE_THRESHOLD) return null;
+  if (measureSignalLevel(samples) < SILENCE_THRESHOLD) return null;
 
   const minLag = Math.max(2, Math.floor(sampleRate / maxFrequency));
   const maxLag = Math.min(
