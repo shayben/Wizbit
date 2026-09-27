@@ -17,7 +17,8 @@ function libraryPath(uid: string, id?: string) {
 }
 
 async function midiContentId(file: File) {
-  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
   const hash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
   return `midi_${hash}`;
 }
