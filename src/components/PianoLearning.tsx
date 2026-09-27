@@ -8,10 +8,9 @@ import {
   parseMidiFile,
   type PianoSong,
 } from '../services/pianoSongService';
-import type { SongsterrSong, SongsterrTrack } from '../services/songsterrService';
 import PianoRoll from './PianoRoll';
 import PianoSheetMusic from './PianoSheetMusic';
-import SongsterrSearch from './SongsterrSearch';
+import OpenMidiSearch from './OpenMidiSearch';
 import { usePianoSynth } from '../hooks/usePianoSynth';
 import { useMicrophonePitch } from '../hooks/useMicrophonePitch';
 import { useAuth } from '../contexts/AuthContext';
@@ -27,7 +26,7 @@ interface PianoLearningProps {
   onClose: () => void;
 }
 
-type SongSourceTab = 'built-in' | 'library' | 'upload' | 'songsterr';
+type SongSourceTab = 'built-in' | 'library' | 'upload' | 'open-midi';
 
 const COMPUTER_NOTE_KEYS: Record<string, number> = {
   a: 60, w: 61, s: 62, e: 63, d: 64, f: 65, t: 66,
@@ -51,14 +50,15 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
   const [fileError, setFileError] = useState<string | null>(null);
   const [isLoadingFile, setIsLoadingFile] = useState(false);
   const [sourceTab, setSourceTab] = useState<SongSourceTab>('built-in');
-  const [selectedSongsterr, setSelectedSongsterr] = useState<{ song: SongsterrSong; track: SongsterrTrack } | null>(null);
   const [midiLibrary, setMidiLibrary] = useState<SavedMidiFile[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(Boolean(user));
   const [libraryError, setLibraryError] = useState<string | null>(null);
   const [loadingLibraryId, setLoadingLibraryId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const releaseTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
+  const playbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const advancingRef = useRef(false);
+  const [isPlaying, setIsPlaying] = useState(false);
   const playTone = usePianoSynth();
   const libraryUid = user?.uid ?? null;
 
@@ -68,14 +68,21 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
     [currentChord],
   );
 
-  const resetPractice = useCallback((nextSong = song) => {
-    setCurrentIndex(0);
+  const stopPlayback = useCallback(() => {
+    if (playbackTimerRef.current) clearTimeout(playbackTimerRef.current);
+    playbackTimerRef.current = null;
+    setIsPlaying(false);
     setPressedNotes(new Set());
+  }, []);
+
+  const resetPractice = useCallback((nextSong = song) => {
+    stopPlayback();
+    setCurrentIndex(0);
     advancingRef.current = false;
     setCorrectCount(0);
     setMistakeCount(0);
     setFeedback(`Ready for ${nextSong.title}. Play ${nextSong.chords[0]?.notes.map((note) => note.name).join(' + ')}.`);
-  }, [song]);
+  }, [song, stopPlayback]);
 
   const handleNoteOn = useCallback((note: number) => {
     setPressedNotes((previous) => {
@@ -124,13 +131,15 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
   const microphone = useMicrophonePitch(handleNoteOn);
   const suppressMicrophone = microphone.suppress;
   const handlePlayableNote = useCallback((note: number) => {
+    stopPlayback();
     suppressMicrophone();
     playTone(note);
     handleNoteOn(note);
-  }, [handleNoteOn, playTone, suppressMicrophone]);
+  }, [handleNoteOn, playTone, stopPlayback, suppressMicrophone]);
 
   useEffect(() => () => {
     releaseTimersRef.current.forEach((timer) => clearTimeout(timer));
+    if (playbackTimerRef.current) clearTimeout(playbackTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -148,13 +157,13 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
 
   useEffect(() => {
     if (!libraryUid) {
-      setMidiLibrary([]); // eslint-disable-line react-hooks/set-state-in-effect
+      setMidiLibrary([]);
       setLibraryLoading(false);
       return;
     }
 
     let cancelled = false;
-    setLibraryLoading(true); // eslint-disable-line react-hooks/set-state-in-effect
+    setLibraryLoading(true);
     setLibraryError(null);
     listMidiFiles(libraryUid)
       .then((files) => {
@@ -169,17 +178,12 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
     return () => { cancelled = true; };
   }, [libraryUid]);
 
-  const handleFile = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file) return;
-
+  const importMidiFile = useCallback(async (file: File) => {
     setIsLoadingFile(true);
     setFileError(null);
     setLibraryError(null);
     try {
       const parsedSong = await parseMidiFile(file);
-      setSelectedSongsterr(null);
       setSong(parsedSong);
       resetPractice(parsedSong);
 
@@ -202,12 +206,17 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
     }
   }, [libraryUid, resetPractice]);
 
+  const handleFile = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (file) void importMidiFile(file);
+  }, [importMidiFile]);
+
   const handleLocalMidiUpload = useCallback(() => {
     fileInputRef.current?.click();
   }, []);
 
   const handleBuiltInSong = useCallback((nextSong: PianoSong) => {
-    setSelectedSongsterr(null);
     setSong(nextSong);
     resetPractice(nextSong);
   }, [resetPractice]);
@@ -219,7 +228,6 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
     try {
       const file = await loadMidiFile(libraryUid, saved);
       const parsedSong = await parseMidiFile(file);
-      setSelectedSongsterr(null);
       setSong(parsedSong);
       resetPractice(parsedSong);
     } catch {
@@ -253,12 +261,55 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
     }
   }, [libraryUid]);
 
-  const handleSongsterrPractice = useCallback((song: SongsterrSong, track: SongsterrTrack) => {
-    setSelectedSongsterr({ song, track });
-    setSourceTab('upload');
-    setFileError(null);
-    setFeedback(`Selected ${song.title} from Songsterr — upload your authorized MIDI file for ${track.name} to practice.`);
-  }, []);
+  const moveToChord = useCallback((index: number) => {
+    stopPlayback();
+    const boundedIndex = Math.max(0, Math.min(index, song.chords.length - 1));
+    setCurrentIndex(boundedIndex);
+    advancingRef.current = false;
+    setFeedback(`Ready for ${song.chords[boundedIndex]?.notes.map((note) => note.name).join(' + ')}.`);
+  }, [song.chords, stopPlayback]);
+
+  const startPlayback = useCallback(() => {
+    if (song.chords.length === 0) return;
+
+    if (playbackTimerRef.current) clearTimeout(playbackTimerRef.current);
+    setIsPlaying(true);
+    setFeedback('Playing song preview…');
+
+    const firstIndex = currentIndex >= song.chords.length - 1 ? 0 : currentIndex;
+    const playFrom = (index: number) => {
+      const chord = song.chords[index];
+      if (!chord) {
+        playbackTimerRef.current = null;
+        setPressedNotes(new Set());
+        setIsPlaying(false);
+        setFeedback('Preview finished. Your turn!');
+        return;
+      }
+
+      setCurrentIndex(index);
+      setPressedNotes(new Set(chord.notes.map((note) => note.midi)));
+
+      const nextChord = song.chords[index + 1];
+      const delaySeconds = nextChord
+        ? Math.max(0.12, nextChord.time - chord.time)
+        : Math.max(0.4, chord.duration);
+      suppressMicrophone((delaySeconds * 1000) + 250);
+      chord.notes.forEach((note) => playTone(note.midi, note.velocity));
+      playbackTimerRef.current = setTimeout(() => playFrom(index + 1), delaySeconds * 1000);
+    };
+
+    playFrom(firstIndex);
+  }, [currentIndex, playTone, song.chords, suppressMicrophone]);
+
+  const togglePlayback = useCallback(() => {
+    if (isPlaying) {
+      stopPlayback();
+      setFeedback(`Preview paused at target ${currentIndex + 1}.`);
+      return;
+    }
+    startPlayback();
+  }, [currentIndex, isPlaying, startPlayback, stopPlayback]);
 
   const progress = song.chords.length === 0 ? 0 : ((currentIndex + 1) / song.chords.length) * 100;
 
@@ -271,7 +322,7 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
         className="hidden"
         onChange={handleFile}
       />
-      <div className="max-w-6xl mx-auto space-y-5">
+      <div className="max-w-6xl mx-auto space-y-5 pb-20">
         <header>
           <div>
             <button type="button" onClick={onClose} className="text-violet-600 font-semibold mb-2">
@@ -284,13 +335,6 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
 
         {fileError && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{fileError}</p>}
         {libraryError && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{libraryError}</p>}
-        {selectedSongsterr && (
-          <p className="rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-700">
-            Selected from Songsterr: <span className="font-semibold">{selectedSongsterr.song.title}</span> by{' '}
-            {selectedSongsterr.song.artist} · {selectedSongsterr.track.name}. Upload an authorized MIDI file to practice.
-          </p>
-        )}
-
         <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm md:p-4">
           <div
             role="tablist"
@@ -301,7 +345,7 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
               { id: 'built-in', label: 'Built-in', icon: '🎼' },
               { id: 'library', label: 'Library', icon: '☁️' },
               { id: 'upload', label: 'Upload', icon: '📁' },
-              { id: 'songsterr', label: 'Songsterr', icon: '🎸' },
+              { id: 'open-midi', label: 'Find MIDI', icon: '🔎' },
             ] as const).map((tab) => (
               <button
                 key={tab.id}
@@ -428,7 +472,6 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
                 {libraryUid
                   ? ' It will also be saved to your online library.'
                   : ' Sign in from the home screen to save it across devices.'}
-                {selectedSongsterr && ' Use the Songsterr selection above to find the song and pair it with an authorized MIDI file.'}
               </p>
               <button
                 type="button"
@@ -441,9 +484,13 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
             </div>
           )}
 
-          {sourceTab === 'songsterr' && (
+          {sourceTab === 'open-midi' && (
             <div className="mt-4">
-              <SongsterrSearch onPractice={handleSongsterrPractice} />
+              <OpenMidiSearch
+                savesToLibrary={Boolean(libraryUid)}
+                onImport={importMidiFile}
+                onVoiceSearchStart={microphone.stop}
+              />
             </div>
           )}
         </section>
@@ -601,6 +648,52 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
           pressedNotes={pressedNotes}
           onPlayNote={handlePlayableNote}
         />
+
+        <div
+          className="fixed left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-full border border-slate-200 bg-white/95 p-1.5 shadow-lg shadow-slate-900/15 backdrop-blur"
+          style={{ bottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
+          role="toolbar"
+          aria-label="Piano playback controls"
+        >
+          <button
+            type="button"
+            onClick={() => moveToChord(currentIndex - 1)}
+            disabled={currentIndex === 0}
+            className="grid size-9 place-items-center rounded-full text-slate-600 hover:bg-slate-100 disabled:opacity-30"
+            aria-label="Previous target"
+          >
+            <span aria-hidden="true">‹</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => resetPractice()}
+            className="grid size-9 place-items-center rounded-full text-slate-600 hover:bg-slate-100"
+            aria-label="Restart song"
+          >
+            <span className="text-lg" aria-hidden="true">↺</span>
+          </button>
+          <button
+            type="button"
+            onClick={togglePlayback}
+            className="flex h-10 min-w-20 items-center justify-center gap-1.5 rounded-full bg-violet-600 px-4 text-sm font-bold text-white shadow-sm hover:bg-violet-700"
+            aria-label={isPlaying ? 'Pause song preview' : 'Play song preview'}
+          >
+            <span aria-hidden="true">{isPlaying ? 'Ⅱ' : '▶'}</span>
+            {isPlaying ? 'Pause' : 'Play'}
+          </button>
+          <button
+            type="button"
+            onClick={() => moveToChord(currentIndex + 1)}
+            disabled={currentIndex >= song.chords.length - 1}
+            className="grid size-9 place-items-center rounded-full text-slate-600 hover:bg-slate-100 disabled:opacity-30"
+            aria-label="Next target"
+          >
+            <span aria-hidden="true">›</span>
+          </button>
+          <span className="hidden min-w-14 pr-2 text-center text-xs font-semibold text-slate-500 sm:inline">
+            {currentIndex + 1}/{song.chords.length}
+          </span>
+        </div>
 
         <p className="text-center text-xs text-slate-400">
           On iPhone or iPad, tap Listen to use the microphone. You can also tap the piano keys or use

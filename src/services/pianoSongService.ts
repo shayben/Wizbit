@@ -178,6 +178,12 @@ export const BUILT_IN_PIANO_SONGS: PianoSong[] = [
     [67, 0.5], [67, 0.5], [64, 0.5], [64, 0.5],
     [60], [67], [64], [62], [60, 2],
   ]),
+  makeBuiltInSong('demo-happy-birthday', 'Happy Birthday to You', 'Traditional birthday song · Public domain', 96, [
+    [67, 0.75], [67, 0.25], [69], [67], [72], [71, 2],
+    [67, 0.75], [67, 0.25], [69], [67], [74], [72, 2],
+    [67, 0.75], [67, 0.25], [79], [76], [72], [71], [69, 2],
+    [77, 0.75], [77, 0.25], [76], [72], [74], [72, 2],
+  ]),
 ];
 
 export const DEMO_PIANO_SONG = BUILT_IN_PIANO_SONGS[0];

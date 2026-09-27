@@ -14,5 +14,3 @@ import './functions/health.js';
 import './functions/waitlist.js';
 import './functions/learnerData.js';
 import './functions/midiLibrary.js';
-import './functions/songsterrSearch.js';
-import './functions/songsterrTrack.js';

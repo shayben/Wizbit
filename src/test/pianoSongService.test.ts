@@ -55,12 +55,25 @@ describe('pianoSongService', () => {
   });
 
   it('provides distinct playable public-domain lessons', () => {
-    expect(BUILT_IN_PIANO_SONGS.length).toBeGreaterThanOrEqual(5);
+    expect(BUILT_IN_PIANO_SONGS.length).toBeGreaterThanOrEqual(6);
     expect(new Set(BUILT_IN_PIANO_SONGS.map((song) => song.id)).size).toBe(BUILT_IN_PIANO_SONGS.length);
     for (const song of BUILT_IN_PIANO_SONGS) {
       expect(song.credit).toContain('Public domain');
       expect(song.notes.length).toBeGreaterThan(10);
       expect(song.chords.length).toBe(song.notes.length);
     }
+  });
+
+  it('includes the complete Happy Birthday melody', () => {
+    const song = BUILT_IN_PIANO_SONGS.find((item) => item.id === 'demo-happy-birthday');
+
+    expect(song?.title).toBe('Happy Birthday to You');
+    expect(song?.notes.map((item) => item.midi)).toEqual([
+      67, 67, 69, 67, 72, 71,
+      67, 67, 69, 67, 74, 72,
+      67, 67, 79, 76, 72, 71, 69,
+      77, 77, 76, 72, 74, 72,
+    ]);
+    expect(song?.duration).toBe(15.625);
   });
 });

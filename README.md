@@ -169,8 +169,9 @@ Vite with `npm run dev -- --host` and open the displayed network URL.
    retell.
 5. For math: practise a skill, drill facts against the mastery grid, or work
    through word problems.
-6. For piano: upload a Standard MIDI file while signed in to save it to the
-   account-wide online library. The same song can then be opened by any learner
+6. For piano: upload a Standard MIDI file or search Wikimedia Commons by text
+   or voice for public-domain and CC0 MIDI files. Signed-in imports are saved
+   directly to the account-wide online library and can be opened by any learner
    on any signed-in device.
 7. Open the dashboard to review history, fact mastery, sight-word and spelling
    progress, trophies and stickers.
