@@ -9,11 +9,39 @@ export interface MidiDevice {
   name: string;
 }
 
+interface MidiPlatform {
+  userAgent: string;
+  platform: string;
+  maxTouchPoints: number;
+}
+
+function isAppleMobilePlatform({ userAgent, platform, maxTouchPoints }: MidiPlatform) {
+  return /iPad|iPhone|iPod/i.test(userAgent)
+    || (platform === 'MacIntel' && maxTouchPoints > 1);
+}
+
+export function getWebMidiUnsupportedMessage(platform: MidiPlatform) {
+  if (isAppleMobilePlatform(platform)) {
+    return 'USB MIDI is not supported by browsers on iPhone or iPad, including Chrome. Use the on-screen piano, or open Wizbit in Chrome or Edge on a desktop.';
+  }
+
+  return 'USB MIDI is not available in this browser. Use the on-screen piano, or open Wizbit in Chrome or Edge on a desktop.';
+}
+
 export function useMidiInput(onNoteOn: (note: number, velocity: number) => void) {
+  const midiNavigator = navigator as MidiNavigator;
+  const isSupported = typeof midiNavigator.requestMIDIAccess === 'function';
+  const unsupportedMessage = getWebMidiUnsupportedMessage({
+    userAgent: navigator.userAgent,
+    platform: navigator.platform,
+    maxTouchPoints: navigator.maxTouchPoints,
+  });
   const [devices, setDevices] = useState<MidiDevice[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
-  const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'unsupported' | 'error'>('idle');
-  const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState<'idle' | 'connecting' | 'connected' | 'unsupported' | 'error'>(
+    isSupported ? 'idle' : 'unsupported',
+  );
+  const [error, setError] = useState<string | null>(isSupported ? null : unsupportedMessage);
   const accessRef = useRef<MIDIAccess | null>(null);
   const callbackRef = useRef(onNoteOn);
 
@@ -68,10 +96,9 @@ export function useMidiInput(onNoteOn: (note: number, velocity: number) => void)
   }, [attachInput, selectedDeviceId]);
 
   const connect = useCallback(async () => {
-    const midiNavigator = navigator as MidiNavigator;
     if (!midiNavigator.requestMIDIAccess) {
       setStatus('unsupported');
-      setError('Web MIDI is not available in this browser. Use Chrome or Edge on desktop.');
+      setError(unsupportedMessage);
       return;
     }
 
@@ -86,7 +113,7 @@ export function useMidiInput(onNoteOn: (note: number, velocity: number) => void)
       setStatus('error');
       setError(connectionError instanceof Error ? connectionError.message : 'Could not access MIDI devices.');
     }
-  }, [refreshDevices]);
+  }, [midiNavigator, refreshDevices, unsupportedMessage]);
 
   useEffect(() => () => {
     const access = accessRef.current;
@@ -102,6 +129,7 @@ export function useMidiInput(onNoteOn: (note: number, velocity: number) => void)
     selectedDeviceId,
     status,
     error,
+    isSupported,
     connect,
     selectDevice: attachInput,
   };

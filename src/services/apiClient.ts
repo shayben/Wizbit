@@ -127,6 +127,38 @@ export async function apiGet<TRes>(path: string): Promise<TRes> {
   return parse<TRes>(res);
 }
 
+export async function apiUpload<TRes>(
+  path: string,
+  body: Blob,
+  headers?: HeadersInit,
+): Promise<TRes> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: await buildHeaders(headers),
+    body,
+  });
+  return parse<TRes>(res);
+}
+
+export async function apiDelete<TRes>(path: string): Promise<TRes> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'DELETE',
+    headers: await buildHeaders(),
+  });
+  return parse<TRes>(res);
+}
+
+export async function apiDownload(path: string): Promise<Blob> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'GET',
+    headers: await buildHeaders(),
+  });
+  if (!res.ok) {
+    await parse(res);
+  }
+  return res.blob();
+}
+
 /* ------------------------------------------------------------------------ */
 /*  Convenience for raw blob uploads (e.g. images we already have as base64) */
 /* ------------------------------------------------------------------------ */

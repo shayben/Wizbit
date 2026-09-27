@@ -362,7 +362,7 @@ export default function App() {
           >
             <span className="text-6xl" aria-hidden="true">🎹</span>
             <span className="block text-3xl font-extrabold mt-5">Piano</span>
-            <span className="block text-pink-100 mt-2">Practice songs with your USB MIDI keyboard.</span>
+            <span className="block text-pink-100 mt-2">Practice with MIDI, microphone, or on-screen keys.</span>
           </button>
         </div>
 

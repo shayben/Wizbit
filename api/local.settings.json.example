@@ -32,6 +32,9 @@
     "COSMOS_DATABASE": "wizbit",
     "COSMOS_PROGRESS_CONTAINER": "progress",
 
+    "MIDI_STORAGE_CONNECTION_STRING": "",
+    "MIDI_STORAGE_CONTAINER": "midi-library",
+
     "FREEMIUM_ENABLED": "false",
     "ALLOW_ANONYMOUS": "true",
     "ANONYMOUS_DAILY_LIMIT_MULTIPLIER": "0.5"

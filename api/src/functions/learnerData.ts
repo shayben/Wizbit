@@ -8,7 +8,7 @@
 
 import { app, type HttpRequest, type HttpResponseInit, type InvocationContext } from '@azure/functions';
 import type { SqlParameter } from '@azure/cosmos';
-import { resolveCaller, type Caller } from '../lib/auth.js';
+import { isOwnedLearnerScope, resolveCaller } from '../lib/auth.js';
 import { getCosmosContainers } from '../lib/cosmos.js';
 import { badRequest, json, ok, serverError, unauthorized } from '../lib/http.js';
 
@@ -18,10 +18,7 @@ type LearnerDataRequest =
   | { operation: 'delete'; uid: string; id: string }
   | { operation: 'query'; uid: string; sql: string; parameters?: SqlParameter[] };
 
-export function isOwnedLearnerScope(caller: Caller, uid: string): boolean {
-  return caller.provider !== 'anonymous'
-    && (uid === caller.uid || uid.startsWith(`${caller.uid}::`));
-}
+export { isOwnedLearnerScope };
 
 function isValidText(value: unknown, maxLength: number): value is string {
   return typeof value === 'string'

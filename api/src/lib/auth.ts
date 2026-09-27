@@ -33,6 +33,11 @@ export function isAdminCaller(caller: Caller): boolean {
     || (caller.email !== undefined && config.auth.adminEmails.has(caller.email.toLowerCase()));
 }
 
+export function isOwnedLearnerScope(caller: Caller, uid: string): boolean {
+  return caller.provider !== 'anonymous'
+    && (uid === caller.uid || uid.startsWith(`${caller.uid}::`));
+}
+
 /* ------------------------------------------------------------------------ */
 /*  Microsoft Entra token verification                                       */
 /* ------------------------------------------------------------------------ */

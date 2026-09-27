@@ -78,7 +78,8 @@ Browser
                     ├── Azure Speech
                     ├── Azure Translator
                     ├── Azure OpenAI
-                    └── Azure Cosmos DB
+                    ├── Azure Cosmos DB
+                    └── Azure Blob Storage
 ```
 
 The client contains only public SSO identifiers. Azure credentials remain in
@@ -98,6 +99,7 @@ Progress is saved locally first and can be synchronized through Cosmos DB.
   - Azure AI Translator
   - Azure OpenAI
   - Azure Cosmos DB (recommended for persistent progress and quotas)
+  - Azure Blob Storage (for the signed-in cross-device MIDI library)
 - Optional Microsoft Entra ID and/or Google OAuth applications for sign-in
 
 ### Install
@@ -130,6 +132,11 @@ Add the server-side credentials for the Azure services you want to use. The
 example file documents all supported values. It is gitignored and must never be
 committed.
 
+For the online MIDI library, set `MIDI_STORAGE_CONNECTION_STRING` to a private
+Azure Storage account connection string. `MIDI_STORAGE_CONTAINER` is optional
+and defaults to `midi-library`. When the dedicated setting is omitted, the API
+falls back to `AzureWebJobsStorage`.
+
 ### Run Locally
 
 Start the API:
@@ -159,9 +166,12 @@ Vite with `npm run dev -- --host` and open the displayed network URL.
    retell.
 5. For math: practise a skill, drill facts against the mastery grid, or work
    through word problems.
-6. Open the dashboard to review history, fact mastery, sight-word and spelling
+6. For piano: upload a Standard MIDI file while signed in to save it to the
+   account-wide online library. The same song can then be opened by any learner
+   on any signed-in device.
+7. Open the dashboard to review history, fact mastery, sight-word and spelling
    progress, trophies and stickers.
-7. Open the weekly report for a plain-language summary and suggested next
+8. Open the weekly report for a plain-language summary and suggested next
    steps.
 
 Browser microphone and camera access require permission. Camera access from a
@@ -208,8 +218,10 @@ Before deploying:
 
 1. Add the public `VITE_` SSO identifiers as GitHub Actions secrets.
 2. Add Azure service credentials as Azure Static Web Apps application settings.
-3. Add `AZURE_STATIC_WEB_APPS_API_TOKEN` to the repository secrets.
-4. Keep `public/staticwebapp.config.json` updated when a new external service
+3. Set `MIDI_STORAGE_CONNECTION_STRING` when the Function host storage account
+   should not be used for uploaded MIDI files.
+4. Add `AZURE_STATIC_WEB_APPS_API_TOKEN` to the repository secrets.
+5. Keep `public/staticwebapp.config.json` updated when a new external service
    requires a Content Security Policy entry.
 
 ## Security
