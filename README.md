@@ -132,10 +132,13 @@ Add the server-side credentials for the Azure services you want to use. The
 example file documents all supported values. It is gitignored and must never be
 committed.
 
-For the online MIDI library, set `MIDI_STORAGE_CONNECTION_STRING` to a private
-Azure Storage account connection string. `MIDI_STORAGE_CONTAINER` is optional
-and defaults to `midi-library`. When the dedicated setting is omitted, the API
-falls back to `AzureWebJobsStorage`.
+For the online MIDI library, enable a managed identity on the Static Web App,
+grant it **Storage Blob Data Contributor** on a private Azure Storage account,
+and set `MIDI_STORAGE_ACCOUNT_URL` to its Blob service URL, for example
+`https://yourstorageaccount.blob.core.windows.net`. `MIDI_STORAGE_CONTAINER` is
+optional and defaults to `midi-library`. No storage account keys or connection
+strings are used. During local development, `DefaultAzureCredential` can use an
+Azure CLI login or standard Azure identity environment variables.
 
 ### Run Locally
 
@@ -218,10 +221,12 @@ Before deploying:
 
 1. Add the public `VITE_` SSO identifiers as GitHub Actions secrets.
 2. Add Azure service credentials as Azure Static Web Apps application settings.
-3. Set `MIDI_STORAGE_CONNECTION_STRING` when the Function host storage account
-   should not be used for uploaded MIDI files.
-4. Add `AZURE_STATIC_WEB_APPS_API_TOKEN` to the repository secrets.
-5. Keep `public/staticwebapp.config.json` updated when a new external service
+3. Enable the Static Web App managed identity and grant it **Storage Blob Data
+   Contributor** on the MIDI storage account.
+4. Set the non-secret `MIDI_STORAGE_ACCOUNT_URL` application setting to the
+   storage account's Blob service URL.
+5. Add `AZURE_STATIC_WEB_APPS_API_TOKEN` to the repository secrets.
+6. Keep `public/staticwebapp.config.json` updated when a new external service
    requires a Content Security Policy entry.
 
 ## Security

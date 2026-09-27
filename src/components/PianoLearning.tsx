@@ -161,7 +161,7 @@ export default function PianoLearning({ onClose }: PianoLearningProps) {
         if (!cancelled) setMidiLibrary(files);
       })
       .catch(() => {
-        if (!cancelled) setLibraryError('Could not load your online MIDI library.');
+        if (!cancelled) setLibraryError('Could not load your online MIDI library. Storage may not be configured yet.');
       })
       .finally(() => {
         if (!cancelled) setLibraryLoading(false);

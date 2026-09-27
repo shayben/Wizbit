@@ -1,15 +1,16 @@
+import { DefaultAzureCredential } from '@azure/identity';
 import { BlobServiceClient, type ContainerClient } from '@azure/storage-blob';
 
 const DEFAULT_CONTAINER = 'midi-library';
 let containerPromise: Promise<ContainerClient | null> | null = null;
 
 async function initializeContainer(): Promise<ContainerClient | null> {
-  const connectionString = process.env.MIDI_STORAGE_CONNECTION_STRING
-    || process.env.AzureWebJobsStorage
-    || '';
-  if (!connectionString) return null;
+  const accountUrl = process.env.MIDI_STORAGE_ACCOUNT_URL?.trim().replace(/\/$/, '') ?? '';
+  if (!/^https:\/\/[a-z0-9-]+\.blob\.core\.windows\.net$/i.test(accountUrl)) {
+    return null;
+  }
 
-  const service = BlobServiceClient.fromConnectionString(connectionString);
+  const service = new BlobServiceClient(accountUrl, new DefaultAzureCredential());
   const container = service.getContainerClient(
     process.env.MIDI_STORAGE_CONTAINER || DEFAULT_CONTAINER,
   );
